@@ -25,9 +25,20 @@ export class RoomManager {
    * ```
    */
   join(clientId: string, room: string | string[]): void {
-    const rooms = Array.isArray(room) ? room : [room];
+    if (!clientId) {
+      this.logger.warn('Attempted to join with empty clientId');
+      return;
+    }
 
-    for (const roomName of rooms) {
+    const rooms = Array.isArray(room) ? room : [room];
+    const validRooms = rooms.filter((r) => r);
+
+    if (validRooms.length === 0) {
+      this.logger.warn(`Client ${clientId} attempted to join with no valid rooms`);
+      return;
+    }
+
+    for (const roomName of validRooms) {
       this.getOrCreateRoomSet(roomName).add(clientId);
       this.getOrCreateClientSet(clientId).add(roomName);
       this.logger.debug(`Client ${clientId} joined room "${roomName}"`);
@@ -45,9 +56,20 @@ export class RoomManager {
    * ```
    */
   leave(clientId: string, room: string | string[]): void {
-    const rooms = Array.isArray(room) ? room : [room];
+    if (!clientId) {
+      this.logger.warn('Attempted to leave with empty clientId');
+      return;
+    }
 
-    for (const roomName of rooms) {
+    const rooms = Array.isArray(room) ? room : [room];
+    const validRooms = rooms.filter((r) => r);
+
+    if (validRooms.length === 0) {
+      this.logger.warn(`Client ${clientId} attempted to leave with no valid rooms`);
+      return;
+    }
+
+    for (const roomName of validRooms) {
       this.removeClientFromRoom(clientId, roomName);
       this.removeRoomFromClient(clientId, roomName);
       this.logger.debug(`Client ${clientId} left room "${roomName}"`);
@@ -64,6 +86,11 @@ export class RoomManager {
    * ```
    */
   leaveAll(clientId: string): void {
+    if (!clientId) {
+      this.logger.warn('Attempted to leaveAll with empty clientId');
+      return;
+    }
+
     const clientRoomSet = this.clientRooms.get(clientId);
     if (!clientRoomSet) return;
 

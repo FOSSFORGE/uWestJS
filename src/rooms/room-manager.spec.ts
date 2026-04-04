@@ -32,6 +32,23 @@ describe('RoomManager', () => {
       roomManager.join('client-2', []);
       expect(roomManager.getRoomsForClient('client-2').size).toBe(0);
     });
+
+    it('should reject empty clientId', () => {
+      roomManager.join('', 'lobby');
+      expect(roomManager.getClientsInRoom('lobby').size).toBe(0);
+    });
+
+    it('should filter out empty room names', () => {
+      roomManager.join('client-1', ['lobby', '', 'game-1']);
+      expect(roomManager.getRoomsForClient('client-1').size).toBe(2);
+      expect(roomManager.isClientInRoom('client-1', 'lobby')).toBe(true);
+      expect(roomManager.isClientInRoom('client-1', 'game-1')).toBe(true);
+    });
+
+    it('should reject when all room names are empty', () => {
+      roomManager.join('client-1', ['', '']);
+      expect(roomManager.getRoomsForClient('client-1').size).toBe(0);
+    });
   });
 
   describe('leave', () => {
@@ -61,10 +78,23 @@ describe('RoomManager', () => {
       const roomsBefore = roomManager.getRoomsForClient('client-1').size;
 
       expect(() => roomManager.leave('client-1', 'non-existent')).not.toThrow();
-      expect(() => roomManager.leave('client-999', 'lobby')).not.toThrow();
-      
+      expect(roomManager.getRoomsForClient('client-1').size).toBe(roomsBefore);
+
       roomManager.leave('client-1', []);
       expect(roomManager.getRoomsForClient('client-1').size).toBe(roomsBefore);
+    });
+
+    it('should reject empty clientId', () => {
+      roomManager.join('client-1', 'lobby');
+      roomManager.leave('', 'lobby');
+      expect(roomManager.getClientsInRoom('lobby').size).toBe(1);
+    });
+
+    it('should filter out empty room names', () => {
+      roomManager.join('client-1', ['lobby', 'game-1', 'chat']);
+      roomManager.leave('client-1', ['lobby', '', 'game-1']);
+      expect(roomManager.getRoomsForClient('client-1').size).toBe(1);
+      expect(roomManager.isClientInRoom('client-1', 'chat')).toBe(true);
     });
   });
 
@@ -82,6 +112,12 @@ describe('RoomManager', () => {
 
     it('should handle non-existent client gracefully', () => {
       expect(() => roomManager.leaveAll('non-existent')).not.toThrow();
+    });
+
+    it('should reject empty clientId', () => {
+      roomManager.join('client-1', 'lobby');
+      roomManager.leaveAll('');
+      expect(roomManager.getClientsInRoom('lobby').size).toBe(1);
     });
   });
 

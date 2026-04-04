@@ -12,7 +12,12 @@ describe('BroadcastOperator', () => {
   describe('emit', () => {
     it('should call broadcastFn with event and various data types', () => {
       operator.emit('test-event', { message: 'hello' });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { message: 'hello' }, undefined, undefined);
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { message: 'hello' },
+        undefined,
+        undefined
+      );
 
       mockBroadcastFn.mockClear();
       operator.emit('test-event');
@@ -31,11 +36,21 @@ describe('BroadcastOperator', () => {
 
       mockBroadcastFn.mockClear();
       operator.to(['room1', 'room2']).emit('test-event', { data: 2 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, ['room1', 'room2'], undefined);
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 2 },
+        ['room1', 'room2'],
+        undefined
+      );
 
       mockBroadcastFn.mockClear();
       operator.to('room1').to('room2').emit('test-event', { data: 3 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 3 }, ['room1', 'room2'], undefined);
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 3 },
+        ['room1', 'room2'],
+        undefined
+      );
     });
 
     it('should return new immutable instances', () => {
@@ -46,13 +61,18 @@ describe('BroadcastOperator', () => {
   });
 
   describe('except', () => {
-    it('should exclude clients (only first is used)', () => {
+    it('should exclude clients', () => {
       operator.except('client-1').emit('test-event', { data: 1 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 1 }, undefined, 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 1 }, undefined, [
+        'client-1',
+      ]);
 
       mockBroadcastFn.mockClear();
       operator.except(['client-1', 'client-2']).emit('test-event', { data: 2 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, undefined, 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, undefined, [
+        'client-1',
+        'client-2',
+      ]);
     });
 
     it('should return new immutable instances', () => {
@@ -65,11 +85,21 @@ describe('BroadcastOperator', () => {
   describe('chaining', () => {
     it('should chain to() and except() in any order', () => {
       operator.to('room1').except('client-1').emit('test-event', { data: 1 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 1 }, ['room1'], 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 1 },
+        ['room1'],
+        ['client-1']
+      );
 
       mockBroadcastFn.mockClear();
       operator.except('client-1').to('room1').emit('test-event', { data: 2 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, ['room1'], 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 2 },
+        ['room1'],
+        ['client-1']
+      );
     });
 
     it('should handle complex chaining with multiple calls', () => {
@@ -80,7 +110,22 @@ describe('BroadcastOperator', () => {
         .except(['client-2', 'client-3'])
         .emit('test-event', { message: 'hello' });
 
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { message: 'hello' }, ['room1', 'room2', 'room3'], 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { message: 'hello' },
+        ['room1', 'room2', 'room3'],
+        ['client-1', 'client-2', 'client-3'] // All excluded clients accumulated
+      );
+    });
+
+    it('should accumulate excluded clients on chained except() calls', () => {
+      operator.except('client-1').except('client-2').emit('test-event', { data: 1 });
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 1 },
+        undefined,
+        ['client-1', 'client-2'] // Both clients accumulated
+      );
     });
   });
 
@@ -92,8 +137,20 @@ describe('BroadcastOperator', () => {
       op1.emit('event1', { data: 1 });
       op2.emit('event2', { data: 2 });
 
-      expect(mockBroadcastFn).toHaveBeenNthCalledWith(1, 'event1', { data: 1 }, ['room1'], undefined);
-      expect(mockBroadcastFn).toHaveBeenNthCalledWith(2, 'event2', { data: 2 }, ['room1', 'room2'], undefined);
+      expect(mockBroadcastFn).toHaveBeenNthCalledWith(
+        1,
+        'event1',
+        { data: 1 },
+        ['room1'],
+        undefined
+      );
+      expect(mockBroadcastFn).toHaveBeenNthCalledWith(
+        2,
+        'event2',
+        { data: 2 },
+        ['room1', 'room2'],
+        undefined
+      );
     });
   });
 
@@ -101,27 +158,44 @@ describe('BroadcastOperator', () => {
     it('should accept initial rooms and excluded clients', () => {
       const op1 = new BroadcastOperator(mockBroadcastFn, ['room1', 'room2']);
       op1.emit('test-event', { data: 1 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 1 }, ['room1', 'room2'], undefined);
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 1 },
+        ['room1', 'room2'],
+        undefined
+      );
 
       mockBroadcastFn.mockClear();
       const op2 = new BroadcastOperator(mockBroadcastFn, ['room1'], ['client-1']);
       op2.emit('test-event', { data: 2 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, ['room1'], 'client-1');
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 2 },
+        ['room1'],
+        ['client-1']
+      );
     });
   });
 
   describe('edge cases', () => {
     it('should handle empty arrays and special characters', () => {
+      // Empty rooms array means "broadcast to zero rooms" (no clients targeted)
       operator.to([]).emit('test-event', { data: 1 });
       expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 1 }, [], undefined);
 
       mockBroadcastFn.mockClear();
+      // Empty except array means "exclude nobody" (no exclusion filter)
       operator.except([]).emit('test-event', { data: 2 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, undefined, undefined);
+      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 2 }, undefined, []);
 
       mockBroadcastFn.mockClear();
       operator.to('room:123').except('client-id-with-dashes').emit('test-event', { data: 3 });
-      expect(mockBroadcastFn).toHaveBeenCalledWith('test-event', { data: 3 }, ['room:123'], 'client-id-with-dashes');
+      expect(mockBroadcastFn).toHaveBeenCalledWith(
+        'test-event',
+        { data: 3 },
+        ['room:123'],
+        ['client-id-with-dashes']
+      );
     });
   });
 });

@@ -1,6 +1,7 @@
 import { UwsAdapter } from './uws.adapter';
 import { PARAM_ARGS_METADATA, ParamType } from '../decorators';
 import 'reflect-metadata';
+import { UwsSocketImpl } from '../socket/uws-socket';
 
 const MESSAGE_MAPPING_METADATA = 'microservices:message_mapping';
 
@@ -255,11 +256,11 @@ describe('Room Operations Integration', () => {
         send: jest.fn(),
         close: jest.fn(),
         getBufferedAmount: jest.fn().mockReturnValue(0),
-      };
+      } as any;
 
       const roomManager = (adapter as any).roomManager;
       const broadcastFn = (adapter as any).broadcastToRooms.bind(adapter);
-      const socket = new (require('../socket/uws-socket').UwsSocketImpl)(
+      const socket = new UwsSocketImpl(
         'test-client-id',
         mockNativeSocket,
         roomManager,

@@ -86,7 +86,7 @@ describe('UwsSocketImpl', () => {
       });
       expect(() => socket.emit('test', 'data')).toThrow('Failed to emit event "test"');
 
-      mockNativeSocket.send.mockRestore();
+      mockNativeSocket.send.mockReset();
       const circular: any = {};
       circular.self = circular;
       expect(() => socket.emit('test', circular)).toThrow();
@@ -156,49 +156,96 @@ describe('UwsSocketImpl', () => {
     describe('to', () => {
       it('should emit to single or multiple rooms with chaining', () => {
         socket.to('room1').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], undefined);
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1'],
+          ['test-id-123'] // Sender is excluded (Socket.IO-compatible)
+        );
 
         mockBroadcastFn.mockClear();
         socket.to(['room1', 'room2']).emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], undefined);
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1', 'room2'],
+          ['test-id-123'] // Sender is excluded (Socket.IO-compatible)
+        );
 
         mockBroadcastFn.mockClear();
         socket.to('room1').to('room2').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], undefined);
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1', 'room2'],
+          ['test-id-123'] // Sender is excluded (Socket.IO-compatible)
+        );
       });
 
       it('should support except() for excluding clients', () => {
         socket.to('room1').except('client-2').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'client-2');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1'],
+          ['test-id-123', 'client-2'] // Sender + client-2 both excluded
+        );
       });
     });
 
     describe('broadcast', () => {
       it('should broadcast to all clients except sender', () => {
         socket.broadcast.emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, undefined, 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, undefined, [
+          'test-id-123',
+        ]);
       });
 
       it('should broadcast to rooms with chaining', () => {
         socket.broadcast.to('room1').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1'],
+          ['test-id-123']
+        );
 
         mockBroadcastFn.mockClear();
         socket.broadcast.to(['room1', 'room2']).emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1', 'room2'],
+          ['test-id-123']
+        );
 
         mockBroadcastFn.mockClear();
         socket.broadcast.to('room1').to('room2').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1', 'room2'],
+          ['test-id-123']
+        );
       });
 
       it('should support except() on broadcast', () => {
         socket.broadcast.except('client-2').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, undefined, 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          undefined,
+          ['test-id-123', 'client-2'] // except() accumulates with sender exclusion
+        );
 
         mockBroadcastFn.mockClear();
         socket.broadcast.to('room1').except('client-2').emit('message', { text: 'hello' });
-        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'test-id-123');
+        expect(mockBroadcastFn).toHaveBeenCalledWith(
+          'message',
+          { text: 'hello' },
+          ['room1'],
+          ['test-id-123', 'client-2'] // except() accumulates with sender exclusion
+        );
       });
     });
   });

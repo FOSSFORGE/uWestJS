@@ -17,13 +17,23 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   private _data!: TData; // Use definite assignment assertion - data should be set by user
   private nativeSocket: uWS.WebSocket<WebSocketClient>;
   private roomManager: RoomManager;
-  private broadcastFn: (event: string, data: TEmitData, rooms?: string[], except?: string) => void;
+  private broadcastFn: (
+    event: string,
+    data: TEmitData | undefined,
+    rooms?: string[],
+    except?: string[]
+  ) => void;
 
   constructor(
     id: string,
     nativeSocket: uWS.WebSocket<WebSocketClient>,
     roomManager: RoomManager,
-    broadcastFn: (event: string, data: TEmitData, rooms?: string[], except?: string) => void
+    broadcastFn: (
+      event: string,
+      data: TEmitData | undefined,
+      rooms?: string[],
+      except?: string[]
+    ) => void
   ) {
     this._id = id;
     this.nativeSocket = nativeSocket;
@@ -70,9 +80,12 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       result = this.nativeSocket.send(message);
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`, {
-        cause: error,
-      });
+      throw new Error(
+        `Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+        }
+      );
     }
 
     // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
@@ -93,9 +106,12 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       this.nativeSocket.close();
     } catch (error) {
-      throw new Error(`Failed to disconnect socket ${this._id}: ${error instanceof Error ? error.message : String(error)}`, {
-        cause: error,
-      });
+      throw new Error(
+        `Failed to disconnect socket ${this._id}: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+        }
+      );
     }
   }
 
@@ -148,18 +164,18 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   }
 
   /**
-   * Emit to specific room(s)
+   * Emit to specific room(s), excluding the sender (Socket.IO-compatible behavior)
    * @param room - Room name or array of room names
    * @returns BroadcastOperator for chaining
    * @example
    * ```typescript
-   * socket.to('room1').emit('message', data);
-   * socket.to(['room1', 'room2']).emit('message', data);
+   * socket.to('room1').emit('message', data); // Sends to room1, excluding this socket
+   * socket.to(['room1', 'room2']).emit('message', data); // Sends to both rooms, excluding this socket
    * ```
    */
   to(room: string | string[]): IBroadcastOperator<TEmitData> {
     const rooms = Array.isArray(room) ? room : [room];
-    return new BroadcastOperator(this.broadcastFn, rooms);
+    return new BroadcastOperator(this.broadcastFn, rooms, [this._id]);
   }
 
   /**
@@ -191,9 +207,12 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       return JSON.stringify({ event, data });
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`, {
-        cause: error,
-      });
+      throw new Error(
+        `Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+        }
+      );
     }
   }
 }

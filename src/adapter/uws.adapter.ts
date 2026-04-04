@@ -157,7 +157,7 @@ export class UwsAdapter implements WebSocketAdapter {
           if (id) {
             // Remove client from all rooms
             this.roomManager.leaveAll(id);
-            
+
             this.clients.delete(id);
             this.sockets.delete(id);
             this.logger.debug(`Client disconnected: ${id} (Total: ${this.clients.size})`);
@@ -349,13 +349,13 @@ export class UwsAdapter implements WebSocketAdapter {
    * @param event - Event name
    * @param data - Data to send
    * @param rooms - Optional array of room names (if not provided, broadcasts to all)
-   * @param except - Optional client ID to exclude from broadcast
+   * @param except - Optional array of client IDs to exclude from broadcast
    */
   private broadcastToRooms(
     event: string,
     data: unknown,
     rooms?: string[],
-    except?: string
+    except?: string[]
   ): void {
     const targetClients = this.getTargetClients(rooms, except);
     const message = this.serializeMessage({ event, data }, 'room broadcast');
@@ -465,7 +465,7 @@ export class UwsAdapter implements WebSocketAdapter {
    * Get target clients for broadcast
    * @internal
    */
-  private getTargetClients(rooms?: string[], except?: string): Set<string> {
+  private getTargetClients(rooms?: string[], except?: string[]): Set<string> {
     let targetClients: Set<string>;
 
     if (rooms?.length) {
@@ -478,8 +478,10 @@ export class UwsAdapter implements WebSocketAdapter {
       targetClients = new Set(this.clients.keys());
     }
 
-    if (except) {
-      targetClients.delete(except);
+    if (except?.length) {
+      for (const clientId of except) {
+        targetClients.delete(clientId);
+      }
     }
 
     return targetClients;

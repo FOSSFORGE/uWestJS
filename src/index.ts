@@ -9,6 +9,14 @@ export { UwsAdapter } from './adapter/uws.adapter';
 // Decorators
 export * from './decorators';
 
+// Middleware
+export { UseGuards } from './middleware/guards';
+export { UsePipes } from './middleware/pipes';
+export { UseFilters } from './middleware/filters';
+
+// Exceptions
+export * from './exceptions';
+
 // Interfaces
 export * from './interfaces';
 

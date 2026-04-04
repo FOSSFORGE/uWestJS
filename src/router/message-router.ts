@@ -141,6 +141,15 @@ export class MessageRouter {
 
   /**
    * Converts a message pattern to a consistent string key for storage
+   *
+   * Note: Uses JSON.stringify for object patterns, which has the following behaviors:
+   * - undefined values are omitted: {a: 1, b: undefined} becomes {"a":1}
+   * - NaN and Infinity serialize to null: {x: NaN} becomes {"x":null}
+   * - Functions and symbols are omitted
+   *
+   * This means patterns like {a: 1, b: undefined} will match {a: 1}.
+   * If strict structural equality is required, avoid using undefined, NaN, or Infinity in patterns.
+   *
    * @private
    */
   private getHandlerKey(pattern: string | Record<string, unknown>): string {
@@ -158,13 +167,23 @@ export class MessageRouter {
   private sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
     const sorted: Record<string, unknown> = {};
     for (const key of Object.keys(obj).sort()) {
-      const value = obj[key];
-      sorted[key] =
-        value !== null && typeof value === 'object' && !Array.isArray(value)
-          ? this.sortObjectKeys(value as Record<string, unknown>)
-          : value;
+      sorted[key] = this.sortValue(obj[key]);
     }
     return sorted;
+  }
+
+  /**
+   * Recursively sorts values (handles objects, arrays, and primitives)
+   * @private
+   */
+  private sortValue(value: unknown): unknown {
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sortValue(item));
+    }
+    return this.sortObjectKeys(value as Record<string, unknown>);
   }
 
   /**

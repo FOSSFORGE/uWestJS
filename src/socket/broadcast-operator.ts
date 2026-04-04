@@ -12,9 +12,9 @@ export class BroadcastOperator<TEmitData = unknown> implements IBroadcastOperato
   constructor(
     private readonly broadcastFn: (
       event: string,
-      data: TEmitData,
+      data: TEmitData | undefined,
       rooms?: string[],
-      except?: string
+      except?: string[]
     ) => void,
     rooms?: string[],
     excludedClients?: string[]
@@ -32,6 +32,7 @@ export class BroadcastOperator<TEmitData = unknown> implements IBroadcastOperato
    * operator.to('room1').emit('message', data);
    * operator.to(['room1', 'room2']).emit('message', data);
    * operator.to('room1').to('room2').emit('message', data); // Chaining
+   * operator.to([]).emit('message', data); // Empty array = broadcast to zero rooms (no clients)
    * ```
    */
   to(room: string | string[]): BroadcastOperator<TEmitData> {
@@ -41,13 +42,16 @@ export class BroadcastOperator<TEmitData = unknown> implements IBroadcastOperato
 
   /**
    * Exclude specific client(s) from broadcast
+   * Multiple except() calls will accumulate excluded clients.
    * @param clientId - Client ID or array of client IDs to exclude
    * @returns New BroadcastOperator for chaining
    * @example
    * ```typescript
    * operator.except('client-1').emit('message', data);
-   * operator.except(['client-1', 'client-2']).emit('message', data);
+   * operator.except(['client-1', 'client-2']).emit('message', data); // Both excluded
    * operator.to('room1').except('client-1').emit('message', data); // Chaining
+   * operator.except('client-1').except('client-2').emit('message', data); // Both excluded (accumulated)
+   * operator.except([]).emit('message', data); // Empty array = exclude nobody (no filtering)
    * ```
    */
   except(clientId: string | string[]): BroadcastOperator<TEmitData> {
@@ -67,8 +71,7 @@ export class BroadcastOperator<TEmitData = unknown> implements IBroadcastOperato
    * ```
    */
   emit(event: string, data?: TEmitData): void {
-    const exceptClient = this.excludedClients?.[0];
-    this.broadcastFn(event, data as TEmitData, this.rooms, exceptClient);
+    this.broadcastFn(event, data, this.rooms, this.excludedClients);
   }
 
   /**

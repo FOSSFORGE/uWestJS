@@ -169,6 +169,37 @@ describe('MessageRouter', () => {
       });
     });
 
+    it('should match patterns with objects inside arrays regardless of key order', async () => {
+      const pattern = {
+        cmd: 'batch',
+        items: [
+          { b: 1, a: 2 },
+          { d: 4, c: 3 },
+        ],
+      };
+      router.registerHandlers([createHandler(pattern, () => 'array matched')]);
+
+      // Same pattern but object keys in different order inside array
+      const result = await router.route(
+        {
+          event: {
+            cmd: 'batch',
+            items: [
+              { a: 2, b: 1 },
+              { c: 3, d: 4 },
+            ],
+          },
+        },
+        {}
+      );
+
+      expect(result).toEqual({
+        handled: true,
+        response: 'array matched',
+        error: undefined,
+      });
+    });
+
     it('should catch and return handler errors', async () => {
       router.registerHandlers([
         createHandler('error', () => {
@@ -276,6 +307,52 @@ describe('MessageRouter', () => {
 
       router.registerHandlers([createHandler('test2', () => 'result2', 'handle2')]);
       expect(router.getHandlerCount()).toBe(2);
+    });
+  });
+
+  describe('edge cases with JSON serialization', () => {
+    it('should treat undefined values as omitted (JSON behavior)', async () => {
+      const pattern = { cmd: 'test', value: 1 };
+      router.registerHandlers([createHandler(pattern, () => 'matched')]);
+
+      // Pattern with undefined should match pattern without that key
+      const result = await router.route({ event: { cmd: 'test', value: 1, extra: undefined } }, {});
+      expect(result.handled).toBe(true);
+      expect(result.response).toBe('matched');
+    });
+
+    it('should serialize NaN and Infinity as null (JSON behavior)', async () => {
+      const pattern = { cmd: 'test', value: null };
+      router.registerHandlers([createHandler(pattern, () => 'matched')]);
+
+      // NaN and Infinity serialize to null, so they match null patterns
+      const nanResult = await router.route({ event: { cmd: 'test', value: NaN } }, {});
+      expect(nanResult.handled).toBe(true);
+
+      router.clear();
+      router.registerHandlers([createHandler(pattern, () => 'matched')]);
+      const infResult = await router.route({ event: { cmd: 'test', value: Infinity } }, {});
+      expect(infResult.handled).toBe(true);
+    });
+
+    it('should omit functions and symbols (JSON behavior)', async () => {
+      const pattern = { cmd: 'test', id: 123 };
+      router.registerHandlers([createHandler(pattern, () => 'matched')]);
+
+      // Functions and symbols are omitted during serialization
+      const result = await router.route(
+        {
+          event: {
+            cmd: 'test',
+            id: 123,
+            fn: () => {},
+            sym: Symbol('test'),
+          },
+        },
+        {}
+      );
+      expect(result.handled).toBe(true);
+      expect(result.response).toBe('matched');
     });
   });
 });

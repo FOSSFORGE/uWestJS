@@ -124,10 +124,7 @@ export class MetadataScanner {
    * @param event - The event/message pattern to look up
    * @returns The method name if found, null otherwise
    */
-  getMethodNameForEvent(
-    instance: object,
-    event: string | Record<string, unknown>
-  ): string | null {
+  getMethodNameForEvent(instance: object, event: string | Record<string, unknown>): string | null {
     const handlers = this.cache.get(instance);
     if (!handlers) return null;
 

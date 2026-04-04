@@ -174,7 +174,10 @@ describe('MetadataScanner', () => {
 
       // Same pattern but keys in different order at all levels
       expect(
-        scanner.getMethodNameForEvent(gateway, { meta: { type: 'request', version: 1 }, cmd: 'test' })
+        scanner.getMethodNameForEvent(gateway, {
+          meta: { type: 'request', version: 1 },
+          cmd: 'test',
+        })
       ).toBe('handleMessage');
     });
 
@@ -225,8 +228,10 @@ describe('MetadataScanner', () => {
       const handlers = scanner.scanForMessageHandlers(gateway);
 
       expect(handlers).toHaveLength(2);
-      expect(handlers.find(h => h.methodName === 'handleMessage')?.message).toEqual(objectPattern);
-      expect(handlers.find(h => h.methodName === 'handleChat')?.message).toBe('');
+      expect(handlers.find((h) => h.methodName === 'handleMessage')?.message).toEqual(
+        objectPattern
+      );
+      expect(handlers.find((h) => h.methodName === 'handleChat')?.message).toBe('');
     });
   });
 

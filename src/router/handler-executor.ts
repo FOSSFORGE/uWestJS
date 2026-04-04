@@ -5,6 +5,9 @@ import {
   ParamMetadata,
   ParamType,
 } from '../decorators/message-body.decorator';
+import { GuardExecutor, WsExecutionContext } from '../middleware/guards';
+import { PipeExecutor } from '../middleware/pipes';
+import { ExceptionFilterExecutor, WsArgumentsHost } from '../middleware/filters';
 
 /**
  * Result of executing a handler
@@ -31,6 +34,9 @@ export interface ExecutionResult {
  */
 export class HandlerExecutor {
   private readonly logger = new Logger(HandlerExecutor.name);
+  private readonly guardExecutor = new GuardExecutor();
+  private readonly pipeExecutor = new PipeExecutor();
+  private readonly filterExecutor = new ExceptionFilterExecutor();
 
   /**
    * Executes a handler method with parameter injection
@@ -53,8 +59,29 @@ export class HandlerExecutor {
         throw new Error(`Method ${methodName} not found on gateway instance`);
       }
 
+      // Execute guards before handler
+      const context: WsExecutionContext = {
+        instance,
+        methodName,
+        client,
+        data,
+      };
+
+      const guardsPassed = await this.guardExecutor.executeGuards(context);
+
+      if (!guardsPassed) {
+        this.logger.debug(`Guards denied access for ${methodName}`);
+        return {
+          success: false,
+          error: new Error('Forbidden'),
+        };
+      }
+
       const paramMetadata = this.getParameterMetadata(instance, methodName);
-      const args = this.buildArguments(paramMetadata, client, data);
+      let args = this.buildArguments(paramMetadata, client, data);
+
+      // Execute pipes on parameters
+      args = await this.pipeExecutor.transformParameters(instance, methodName, args);
 
       this.logger.debug(`Executing handler ${methodName} with ${args.length} parameters`);
 
@@ -63,7 +90,22 @@ export class HandlerExecutor {
       return { success: true, response: result };
     } catch (error) {
       this.logger.error(`Error executing handler ${methodName}: ${this.formatError(error)}`);
-      return { success: false, error: this.toError(error) };
+
+      // Execute exception filters
+      const host: WsArgumentsHost = {
+        instance,
+        methodName,
+        client,
+        data,
+      };
+
+      const errorResponse = await this.filterExecutor.catch(this.toError(error), host);
+
+      return {
+        success: false,
+        error: this.toError(error),
+        response: errorResponse,
+      };
     }
   }
 
