@@ -4,4 +4,4 @@
  */
 
 export { UwsSocketImpl } from './uws-socket';
-// BroadcastOperator will be implemented in Phase 3
+export { BroadcastOperator } from './broadcast-operator';

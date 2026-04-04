@@ -119,15 +119,54 @@ export class MetadataScanner {
 
   /**
    * Gets the method name for a specific event/message pattern
+   * Supports both string and object pattern matching
    * @param instance - The gateway instance
    * @param event - The event/message pattern to look up
    * @returns The method name if found, null otherwise
    */
-  getMethodNameForEvent(instance: object, event: string): string | null {
+  getMethodNameForEvent(
+    instance: object,
+    event: string | Record<string, unknown>
+  ): string | null {
     const handlers = this.cache.get(instance);
     if (!handlers) return null;
 
-    const handler = handlers.find((h) => h.message === event);
+    const handler = handlers.find((h) => {
+      // String pattern matching
+      if (typeof h.message === 'string' && typeof event === 'string') {
+        return h.message === event;
+      }
+      // Object pattern matching - use stable JSON comparison
+      if (
+        typeof h.message === 'object' &&
+        h.message !== null &&
+        typeof event === 'object' &&
+        event !== null
+      ) {
+        return (
+          JSON.stringify(this.sortObjectKeys(h.message)) ===
+          JSON.stringify(this.sortObjectKeys(event))
+        );
+      }
+      return false;
+    });
+
     return handler ? handler.methodName : null;
+  }
+
+  /**
+   * Recursively sorts object keys for stable serialization
+   * @private
+   */
+  private sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      const value = obj[key];
+      sorted[key] =
+        value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? this.sortObjectKeys(value as Record<string, unknown>)
+          : value;
+    }
+    return sorted;
   }
 }

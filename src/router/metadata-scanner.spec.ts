@@ -111,22 +111,12 @@ describe('MetadataScanner', () => {
   });
 
   describe('caching', () => {
-    it('should cache scan results', () => {
+    it('should cache scan results for same instance', () => {
       addMetadata('handleMessage', 'message');
 
       const firstScan = scanner.scanForMessageHandlers(gateway);
       const secondScan = scanner.scanForMessageHandlers(gateway);
 
-      expect(firstScan).toBe(secondScan);
-    });
-
-    it('should return cached results for same instance', () => {
-      addMetadata('handleMessage', 'message');
-
-      const firstScan = scanner.scanForMessageHandlers(gateway);
-      const secondScan = scanner.scanForMessageHandlers(gateway);
-
-      // Verify caching by checking that the same array reference is returned
       expect(firstScan).toBe(secondScan);
     });
 
@@ -139,7 +129,6 @@ describe('MetadataScanner', () => {
       const scan1 = scanner.scanForMessageHandlers(gateway1);
       const scan2 = scanner.scanForMessageHandlers(gateway2);
 
-      // Different instances should have different cached results
       expect(scan1).not.toBe(scan2);
       expect(scan1.length).toBe(scan2.length);
     });
@@ -154,6 +143,39 @@ describe('MetadataScanner', () => {
 
       expect(scanner.getMethodNameForEvent(gateway, 'message')).toBe('handleMessage');
       expect(scanner.getMethodNameForEvent(gateway, 'chat')).toBe('handleChat');
+    });
+
+    it('should return method name for object pattern events', () => {
+      const pattern = { cmd: 'test', version: 1 };
+      addMetadata('handleMessage', pattern);
+
+      scanner.scanForMessageHandlers(gateway);
+
+      expect(scanner.getMethodNameForEvent(gateway, pattern)).toBe('handleMessage');
+    });
+
+    it('should match object patterns with keys in different order', () => {
+      const pattern = { cmd: 'test', id: 123 };
+      addMetadata('handleMessage', pattern);
+
+      scanner.scanForMessageHandlers(gateway);
+
+      // Same pattern but keys in different order
+      expect(scanner.getMethodNameForEvent(gateway, { id: 123, cmd: 'test' })).toBe(
+        'handleMessage'
+      );
+    });
+
+    it('should match nested object patterns with keys in different order', () => {
+      const pattern = { cmd: 'test', meta: { version: 1, type: 'request' } };
+      addMetadata('handleMessage', pattern);
+
+      scanner.scanForMessageHandlers(gateway);
+
+      // Same pattern but keys in different order at all levels
+      expect(
+        scanner.getMethodNameForEvent(gateway, { meta: { type: 'request', version: 1 }, cmd: 'test' })
+      ).toBe('handleMessage');
     });
 
     it('should return null for non-existent event', () => {
@@ -179,52 +201,32 @@ describe('MetadataScanner', () => {
       expect(handlers).toEqual([]);
     });
 
-    it('should skip constructor', () => {
-      // Add metadata to a regular method to ensure scanner runs
-      addMetadata('handleMessage', 'message');
-
-      // Try to add metadata to the constructor (this shouldn't be picked up)
-      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'test', TestGateway.prototype.constructor);
-
-      const handlers = scanner.scanForMessageHandlers(gateway);
-
-      // Should only find the handleMessage handler, not the constructor
-      expect(handlers).toHaveLength(1);
-      expect(handlers.map((h) => h.methodName)).not.toContain('constructor');
-      expect(handlers[0].methodName).toBe('handleMessage');
-    });
-
-    it('should skip handlers with invalid message pattern types', () => {
+    it('should skip constructor and invalid message pattern types', () => {
       addMetadata('handleMessage', 'valid-string');
       addMetadata('handleChat', 123); // Invalid: number
       addMetadata('handlePing', ['array']); // Invalid: array
       addMetadata('handleError', null); // Invalid: null
 
+      // Try to add metadata to the constructor (shouldn't be picked up)
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'test', TestGateway.prototype.constructor);
+
       const handlers = scanner.scanForMessageHandlers(gateway);
 
-      // Should only find the valid string handler
       expect(handlers).toHaveLength(1);
       expect(handlers[0].methodName).toBe('handleMessage');
       expect(handlers[0].message).toBe('valid-string');
     });
 
-    it('should accept object message patterns', () => {
+    it('should accept object and empty string message patterns', () => {
       const objectPattern = { cmd: 'test', version: 1 };
       addMetadata('handleMessage', objectPattern);
+      addMetadata('handleChat', '');
 
       const handlers = scanner.scanForMessageHandlers(gateway);
 
-      expect(handlers).toHaveLength(1);
-      expect(handlers[0].message).toEqual(objectPattern);
-    });
-
-    it('should handle empty string message patterns', () => {
-      addMetadata('handleMessage', '');
-
-      const handlers = scanner.scanForMessageHandlers(gateway);
-
-      expect(handlers).toHaveLength(1);
-      expect(handlers[0].message).toBe('');
+      expect(handlers).toHaveLength(2);
+      expect(handlers.find(h => h.methodName === 'handleMessage')?.message).toEqual(objectPattern);
+      expect(handlers.find(h => h.methodName === 'handleChat')?.message).toBe('');
     });
   });
 
@@ -306,31 +308,19 @@ describe('MetadataScanner', () => {
     });
 
     it('should not duplicate methods from inheritance chain', () => {
-      // Only add metadata to base and child methods, not the shared one
       Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
       Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'child', ChildGateway.prototype.handleChild);
 
       const childGateway = new ChildGateway();
       const handlers = scanner.scanForMessageHandlers(childGateway);
 
-      // Should have exactly 2 handlers (base + child), no duplicates
       expect(handlers).toHaveLength(2);
       const methodNames = handlers.map((h) => h.methodName);
-      // Verify no duplicate method names using Set
       expect(new Set(methodNames).size).toBe(methodNames.length);
       expect(methodNames).toContain('handleBase');
       expect(methodNames).toContain('handleChild');
-    });
 
-    it('should use Set to prevent duplicate method names from prototype chain', () => {
-      // This test verifies that even if a method appears in multiple prototypes,
-      // it only appears once in the final handler list
-      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
-
-      const childGateway = new ChildGateway();
-      const handlers = scanner.scanForMessageHandlers(childGateway);
-
-      // handleBase should only appear once even though it's in the prototype chain
+      // Verify handleBase only appears once
       const baseHandlers = handlers.filter((h) => h.methodName === 'handleBase');
       expect(baseHandlers).toHaveLength(1);
     });

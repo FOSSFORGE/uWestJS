@@ -14,10 +14,10 @@ export { Payload } from './payload.decorator';
 
 /**
  * Internal metadata constants and types for advanced usage and testing.
+ * These exports are intended for internal use and testing. They may change
+ * without notice in any release, including patch versions.
  *
  * @internal
- * These exports are intended for internal use and testing. They may change
- * in future versions without following semantic versioning. Use at your own risk.
  */
 export { PARAM_ARGS_METADATA, ParamType } from './message-body.decorator';
 export type { ParamMetadata } from './message-body.decorator';

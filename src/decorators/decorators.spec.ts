@@ -70,22 +70,18 @@ describe('Parameter Decorators', () => {
   });
 
   describe('@MessageBody', () => {
-    it('should store parameter metadata', () => {
-      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBody');
-
-      expect(metadata).toHaveLength(1);
-      expect(metadata[0]).toEqual({
+    it('should store parameter metadata with optional property name', () => {
+      const fullMetadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBody');
+      expect(fullMetadata).toHaveLength(1);
+      expect(fullMetadata[0]).toEqual({
         index: 0,
         type: ParamType.MESSAGE_BODY,
         data: undefined,
       });
-    });
 
-    it('should store property name when provided', () => {
-      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBodyProperty');
-
-      expect(metadata).toHaveLength(1);
-      expect(metadata[0]).toEqual({
+      const propertyMetadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBodyProperty');
+      expect(propertyMetadata).toHaveLength(1);
+      expect(propertyMetadata[0]).toEqual({
         index: 0,
         type: ParamType.MESSAGE_BODY,
         data: 'text',
@@ -120,22 +116,18 @@ describe('Parameter Decorators', () => {
   });
 
   describe('@Payload', () => {
-    it('should store parameter metadata', () => {
-      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithPayload');
-
-      expect(metadata).toHaveLength(1);
-      expect(metadata[0]).toEqual({
+    it('should store parameter metadata with optional property name', () => {
+      const fullMetadata = getParamMetadata(TestGateway.prototype, 'handleWithPayload');
+      expect(fullMetadata).toHaveLength(1);
+      expect(fullMetadata[0]).toEqual({
         index: 0,
         type: ParamType.PAYLOAD,
         data: undefined,
       });
-    });
 
-    it('should store property name when provided', () => {
-      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithPayloadProperty');
-
-      expect(metadata).toHaveLength(1);
-      expect(metadata[0]).toEqual({
+      const propertyMetadata = getParamMetadata(TestGateway.prototype, 'handleWithPayloadProperty');
+      expect(propertyMetadata).toHaveLength(1);
+      expect(propertyMetadata[0]).toEqual({
         index: 0,
         type: ParamType.PAYLOAD,
         data: 'message',
@@ -161,6 +153,24 @@ describe('Parameter Decorators', () => {
       expect(socketParam).toEqual({ index: 0, type: ParamType.CONNECTED_SOCKET });
       expect(messageBodyParam).toEqual({ index: 1, type: ParamType.MESSAGE_BODY, data: 'text' });
       expect(payloadParam).toEqual({ index: 2, type: ParamType.PAYLOAD, data: 'user' });
+    });
+
+    it('should throw error when applying multiple decorators to same parameter', () => {
+      class TestClass {
+        testMethod(param: unknown) {
+          return param;
+        }
+      }
+
+      // Apply first decorator
+      MessageBody()(TestClass.prototype, 'testMethod', 0);
+
+      // Attempt to apply second decorator to same parameter should throw
+      expect(() => {
+        ConnectedSocket()(TestClass.prototype, 'testMethod', 0);
+      }).toThrow(
+        'ConnectedSocket decorator: parameter at index 0 already has @messageBody decorator applied'
+      );
     });
   });
 });

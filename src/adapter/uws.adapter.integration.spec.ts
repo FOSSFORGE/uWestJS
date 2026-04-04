@@ -125,110 +125,80 @@ describe('UwsAdapter Integration with Router', () => {
       adapter.bindMessageHandlers(gateway, [], () => null as any);
     });
 
-    it('should route messages to correct handlers', async () => {
+    it('should route messages to correct handlers with parameters', async () => {
       const mockClient = createMockClient();
-      const message = JSON.stringify({
-        event: 'echo',
-        data: { message: 'hello' },
-      });
 
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-
-      expect(gateway.receivedMessages).toHaveLength(1);
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'echo', data: { message: 'hello' } })
+      );
       expect(gateway.receivedMessages[0]).toEqual({
         event: 'echo',
         data: { message: 'hello' },
         client: null,
       });
-
       expect(mockClient.send).toHaveBeenCalledWith(
-        JSON.stringify({
-          event: 'echo',
-          data: { message: 'hello' },
-        })
+        JSON.stringify({ event: 'echo', data: { message: 'hello' } })
       );
-    });
 
-    it('should handle messages with multiple parameters', async () => {
-      const mockClient = createMockClient();
-      const message = JSON.stringify({
-        event: 'ping',
-        data: { timestamp: 123456 },
-      });
+      gateway.receivedMessages = [];
+      mockClient.send.mockClear();
 
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-
-      expect(gateway.receivedMessages).toHaveLength(1);
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'ping', data: { timestamp: 123456 } })
+      );
       expect(gateway.receivedMessages[0].event).toBe('ping');
       expect(gateway.receivedMessages[0].client).toBe(mockClient);
       expect(mockClient.send).toHaveBeenCalled();
     });
 
-    it('should handle handler errors gracefully', async () => {
+    it('should handle errors and no-response handlers', async () => {
       const mockClient = createMockClient();
-      const message = JSON.stringify({ event: 'error', data: {} });
 
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-      // Test passes if no rejection occurs
-
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'error', data: {} })
+      );
       expect(mockClient.send).not.toHaveBeenCalled();
-    });
 
-    it('should handle handlers with no return value', async () => {
-      const mockClient = createMockClient();
-      const message = JSON.stringify({
-        event: 'no-response',
-        data: { test: 'data' },
-      });
-
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'no-response', data: { test: 'data' } })
+      );
       expect(gateway.receivedMessages).toHaveLength(1);
       expect(mockClient.send).not.toHaveBeenCalled();
     });
 
-    it('should handle invalid JSON gracefully', async () => {
+    it('should handle invalid messages gracefully', async () => {
       const mockClient = createMockClient();
 
       await (adapter as any).handleDecoratorBasedMessage(mockClient, 'not valid json');
-      // Test passes if no rejection occurs
-
       expect(mockClient.send).not.toHaveBeenCalled();
-    });
 
-    it('should handle messages without event property', async () => {
-      const mockClient = createMockClient();
-      const message = JSON.stringify({ data: { message: 'hello' } });
-
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ data: { message: 'hello' } })
+      );
       expect(gateway.receivedMessages).toHaveLength(0);
-      expect(mockClient.send).not.toHaveBeenCalled();
+
+      await (adapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'unknown-event', data: {} })
+      );
+      expect(gateway.receivedMessages).toHaveLength(0);
     });
 
-    it('should handle messages when no gateway is bound', async () => {
+    it('should handle missing gateway gracefully', async () => {
       const freshAdapter = new UwsAdapter(null, { port: 8099 });
       const mockClient = createMockClient();
-      const message = JSON.stringify({
-        event: 'echo',
-        data: { message: 'hello' },
-      });
 
-      await (freshAdapter as any).handleDecoratorBasedMessage(mockClient, message);
-      // Test passes if no rejection occurs
-
+      await (freshAdapter as any).handleDecoratorBasedMessage(
+        mockClient,
+        JSON.stringify({ event: 'echo', data: { message: 'hello' } })
+      );
       expect(mockClient.send).not.toHaveBeenCalled();
       freshAdapter.dispose();
-    });
-
-    it('should handle unknown event types', async () => {
-      const mockClient = createMockClient();
-      const message = JSON.stringify({ event: 'unknown-event', data: {} });
-
-      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
-
-      expect(gateway.receivedMessages).toHaveLength(0);
-      expect(mockClient.send).not.toHaveBeenCalled();
     });
   });
 
@@ -258,6 +228,128 @@ describe('UwsAdapter Integration with Router', () => {
       expect(() => {
         (adapter as any).sendResponse(mockClient, 'test-event', { data: 'test' });
       }).not.toThrow();
+    });
+  });
+});
+
+describe('Room Operations Integration', () => {
+  let adapter: UwsAdapter;
+
+  beforeEach(() => {
+    adapter = new UwsAdapter(null, { port: 8099 });
+  });
+
+  afterEach(() => {
+    adapter?.dispose();
+  });
+
+  describe('getSocket', () => {
+    it('should return undefined for non-existent client', () => {
+      const socket = adapter.getSocket('non-existent-id');
+      expect(socket).toBeUndefined();
+    });
+
+    it('should return socket after client connects', () => {
+      // Simulate client connection by directly adding to sockets map
+      const mockNativeSocket = {
+        send: jest.fn(),
+        close: jest.fn(),
+        getBufferedAmount: jest.fn().mockReturnValue(0),
+      };
+
+      const roomManager = (adapter as any).roomManager;
+      const broadcastFn = (adapter as any).broadcastToRooms.bind(adapter);
+      const socket = new (require('../socket/uws-socket').UwsSocketImpl)(
+        'test-client-id',
+        mockNativeSocket,
+        roomManager,
+        broadcastFn
+      );
+
+      (adapter as any).sockets.set('test-client-id', socket);
+
+      const retrievedSocket = adapter.getSocket('test-client-id');
+      expect(retrievedSocket).toBe(socket);
+      expect(retrievedSocket?.id).toBe('test-client-id');
+    });
+  });
+
+  describe('broadcastToRooms', () => {
+    let mockClients: Map<string, any>;
+
+    beforeEach(() => {
+      mockClients = new Map([
+        ['client-1', { id: 'client-1', send: jest.fn().mockReturnValue(0), close: jest.fn() }],
+        ['client-2', { id: 'client-2', send: jest.fn().mockReturnValue(0), close: jest.fn() }],
+        ['client-3', { id: 'client-3', send: jest.fn().mockReturnValue(0), close: jest.fn() }],
+      ]);
+
+      mockClients.forEach((client, id) => (adapter as any).clients.set(id, client));
+
+      const roomManager = (adapter as any).roomManager;
+      roomManager.join('client-1', 'room1');
+      roomManager.join('client-2', ['room1', 'room2']);
+      roomManager.join('client-3', 'room2');
+    });
+
+    it('should broadcast to specific rooms', () => {
+      (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, ['room1']);
+
+      expect(mockClients.get('client-1')!.send).toHaveBeenCalled();
+      expect(mockClients.get('client-2')!.send).toHaveBeenCalled();
+      expect(mockClients.get('client-3')!.send).not.toHaveBeenCalled();
+
+      jest.clearAllMocks();
+      (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, ['room1', 'room2']);
+      mockClients.forEach((client) => expect(client.send).toHaveBeenCalled());
+    });
+
+    it('should broadcast to all clients when no rooms specified', () => {
+      (adapter as any).broadcastToRooms('test-event', { message: 'hello' });
+      mockClients.forEach((client) => expect(client.send).toHaveBeenCalled());
+    });
+
+    it('should exclude specific client from broadcast', () => {
+      (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, ['room1'], 'client-1');
+      expect(mockClients.get('client-1')!.send).not.toHaveBeenCalled();
+      expect(mockClients.get('client-2')!.send).toHaveBeenCalled();
+
+      jest.clearAllMocks();
+      (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, undefined, 'client-2');
+      expect(mockClients.get('client-1')!.send).toHaveBeenCalled();
+      expect(mockClients.get('client-2')!.send).not.toHaveBeenCalled();
+      expect(mockClients.get('client-3')!.send).toHaveBeenCalled();
+    });
+
+    it('should handle empty rooms and send failures gracefully', () => {
+      expect(() => {
+        (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, ['empty-room']);
+      }).not.toThrow();
+      mockClients.forEach((client) => expect(client.send).not.toHaveBeenCalled());
+
+      mockClients.get('client-1')!.send.mockImplementation(() => {
+        throw new Error('Send failed');
+      });
+      expect(() => {
+        (adapter as any).broadcastToRooms('test-event', { message: 'hello' }, ['room1']);
+      }).not.toThrow();
+      expect(mockClients.get('client-2')!.send).toHaveBeenCalled();
+    });
+  });
+
+  describe('room cleanup on disconnect', () => {
+    it('should remove client from all rooms and clean up empty rooms', () => {
+      const roomManager = (adapter as any).roomManager;
+
+      roomManager.join('client-1', ['room1', 'room2', 'room3']);
+      expect(roomManager.isClientInRoom('client-1', 'room1')).toBe(true);
+      expect(roomManager.getRoomCount()).toBe(3);
+
+      roomManager.leaveAll('client-1');
+      expect(roomManager.isClientInRoom('client-1', 'room1')).toBe(false);
+      expect(roomManager.isClientInRoom('client-1', 'room2')).toBe(false);
+      expect(roomManager.isClientInRoom('client-1', 'room3')).toBe(false);
+      expect(roomManager.getRoomCount()).toBe(0);
     });
   });
 });

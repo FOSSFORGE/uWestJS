@@ -1,7 +1,7 @@
 import * as uWS from 'uWebSockets.js';
-import { UwsSocket, BroadcastOperator, WebSocketClient } from '../interfaces';
-// Error message for unimplemented room features
-const ROOM_NOT_IMPLEMENTED = 'Room management not yet implemented. Coming in Phase 3.';
+import { UwsSocket, BroadcastOperator as IBroadcastOperator, WebSocketClient } from '../interfaces';
+import { RoomManager } from '../rooms';
+import { BroadcastOperator } from './broadcast-operator';
 
 /**
  * Socket wrapper that provides a Socket.IO-like API over native uWebSockets.js
@@ -16,16 +16,25 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   private _id: string;
   private _data!: TData; // Use definite assignment assertion - data should be set by user
   private nativeSocket: uWS.WebSocket<WebSocketClient>;
+  private roomManager: RoomManager;
+  private broadcastFn: (event: string, data: TEmitData, rooms?: string[], except?: string) => void;
 
-  constructor(id: string, nativeSocket: uWS.WebSocket<WebSocketClient>) {
+  constructor(
+    id: string,
+    nativeSocket: uWS.WebSocket<WebSocketClient>,
+    roomManager: RoomManager,
+    broadcastFn: (event: string, data: TEmitData, rooms?: string[], except?: string) => void
+  ) {
     this._id = id;
     this.nativeSocket = nativeSocket;
+    this.roomManager = roomManager;
+    this.broadcastFn = broadcastFn;
     // Initialize data as empty object for backward compatibility
     this._data = {} as TData;
   }
 
   /**
-   * Get the unique socket identifier
+   * Note: This property is initialized to an empty object and should be set by the application
    */
   get id(): string {
     return this._id;
@@ -61,7 +70,7 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       result = this.nativeSocket.send(message);
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`, {
+      throw new Error(`Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`, {
         cause: error,
       });
     }
@@ -84,7 +93,7 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       this.nativeSocket.close();
     } catch (error) {
-      throw new Error(`Failed to disconnect socket ${this._id}: ${formatError(error)}`, {
+      throw new Error(`Failed to disconnect socket ${this._id}: ${error instanceof Error ? error.message : String(error)}`, {
         cause: error,
       });
     }
@@ -114,33 +123,33 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
 
   /**
    * Join one or more rooms
-   * @param _room - Room name or array of room names
+   * @param room - Room name or array of room names
    * @example
    * ```typescript
    * socket.join('room1');
    * socket.join(['room1', 'room2']);
    * ```
    */
-  join(_room: string | string[]): void {
-    throw new Error(ROOM_NOT_IMPLEMENTED);
+  join(room: string | string[]): void {
+    this.roomManager.join(this._id, room);
   }
 
   /**
    * Leave one or more rooms
-   * @param _room - Room name or array of room names
+   * @param room - Room name or array of room names
    * @example
    * ```typescript
    * socket.leave('room1');
    * socket.leave(['room1', 'room2']);
    * ```
    */
-  leave(_room: string | string[]): void {
-    throw new Error(ROOM_NOT_IMPLEMENTED);
+  leave(room: string | string[]): void {
+    this.roomManager.leave(this._id, room);
   }
 
   /**
    * Emit to specific room(s)
-   * @param _room - Room name or array of room names
+   * @param room - Room name or array of room names
    * @returns BroadcastOperator for chaining
    * @example
    * ```typescript
@@ -148,8 +157,9 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
    * socket.to(['room1', 'room2']).emit('message', data);
    * ```
    */
-  to(_room: string | string[]): BroadcastOperator<TEmitData> {
-    throw new Error(ROOM_NOT_IMPLEMENTED);
+  to(room: string | string[]): IBroadcastOperator<TEmitData> {
+    const rooms = Array.isArray(room) ? room : [room];
+    return new BroadcastOperator(this.broadcastFn, rooms);
   }
 
   /**
@@ -160,8 +170,8 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
    * socket.broadcast.to('room1').emit('message', data); // Send to room except this socket
    * ```
    */
-  get broadcast(): BroadcastOperator<TEmitData> {
-    throw new Error(ROOM_NOT_IMPLEMENTED);
+  get broadcast(): IBroadcastOperator<TEmitData> {
+    return new BroadcastOperator(this.broadcastFn, undefined, [this._id]);
   }
 
   /**
@@ -181,20 +191,9 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       return JSON.stringify({ event, data });
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`, {
+      throw new Error(`Failed to emit event "${event}": ${error instanceof Error ? error.message : String(error)}`, {
         cause: error,
       });
     }
   }
-}
-
-/**
- * Format error for error messages
- * @internal
- */
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }

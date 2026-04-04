@@ -61,23 +61,17 @@ describe('HandlerExecutor', () => {
       });
     });
 
-    it('should inject @MessageBody parameter', async () => {
-      const gateway = createGateway((data) => data, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+    it('should inject @MessageBody with optional property extraction', async () => {
+      const fullGateway = createGateway((data) => data, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+      const fullResult = await executor.execute(fullGateway, 'handleMessage', {}, mockData);
+      expect(fullResult).toEqual({ success: true, response: mockData });
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: mockData });
-    });
-
-    it('should inject @MessageBody with property extraction', async () => {
-      const gateway = createGateway(
+      const propertyGateway = createGateway(
         (text) => text,
         [{ index: 0, type: ParamType.MESSAGE_BODY, data: 'text' }]
       );
-
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: 'hello world' });
+      const propertyResult = await executor.execute(propertyGateway, 'handleMessage', {}, mockData);
+      expect(propertyResult).toEqual({ success: true, response: 'hello world' });
     });
 
     it('should inject @ConnectedSocket parameter', async () => {
@@ -91,29 +85,23 @@ describe('HandlerExecutor', () => {
       expect(result).toEqual({ success: true, response: mockClient });
     });
 
-    it('should inject @Payload parameter', async () => {
-      const gateway = createGateway((data) => data, [{ index: 0, type: ParamType.PAYLOAD }]);
+    it('should inject @Payload with optional property extraction', async () => {
+      const fullGateway = createGateway((data) => data, [{ index: 0, type: ParamType.PAYLOAD }]);
+      const fullResult = await executor.execute(fullGateway, 'handleMessage', {}, mockData);
+      expect(fullResult).toEqual({ success: true, response: mockData });
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: mockData });
-    });
-
-    it('should inject @Payload with property extraction', async () => {
-      const gateway = createGateway(
+      const propertyGateway = createGateway(
         (user) => user,
         [{ index: 0, type: ParamType.PAYLOAD, data: 'user' }]
       );
-
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: 'john' });
+      const propertyResult = await executor.execute(propertyGateway, 'handleMessage', {}, mockData);
+      expect(propertyResult).toEqual({ success: true, response: 'john' });
     });
 
     it('should return entire array when data is array with property extraction', async () => {
       const arrayData = ['item1', 'item2', 'item3'];
       const gateway = createGateway(
-        (items) => items,
+        (data) => data,
         [{ index: 0, type: ParamType.MESSAGE_BODY, data: 'items' }]
       );
 
@@ -158,82 +146,59 @@ describe('HandlerExecutor', () => {
       });
     });
 
-    it('should handle async handlers', async () => {
-      const gateway = createGateway(
+    it('should handle async handlers and Promises', async () => {
+      const asyncGateway = createGateway(
         async (data) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return data;
         },
         [{ index: 0, type: ParamType.MESSAGE_BODY }]
       );
+      const asyncResult = await executor.execute(asyncGateway, 'handleMessage', {}, mockData);
+      expect(asyncResult).toEqual({ success: true, response: mockData });
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: mockData });
-    });
-
-    it('should handle Promise-returning handlers', async () => {
-      const gateway = createGateway(
+      const promiseGateway = createGateway(
         (data) => Promise.resolve(data),
         [{ index: 0, type: ParamType.MESSAGE_BODY }]
       );
-
-      const result = await executor.execute(gateway, 'handleMessage', {}, mockData);
-
-      expect(result).toEqual({ success: true, response: mockData });
+      const promiseResult = await executor.execute(promiseGateway, 'handleMessage', {}, mockData);
+      expect(promiseResult).toEqual({ success: true, response: mockData });
     });
 
-    it('should handle handlers returning undefined', async () => {
-      const gateway = createGateway(() => undefined, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+    it('should handle handlers returning undefined or null', async () => {
+      const undefinedGateway = createGateway(() => undefined, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+      const undefinedResult = await executor.execute(undefinedGateway, 'handleMessage', {}, {});
+      expect(undefinedResult).toEqual({ success: true, response: undefined });
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, {});
-
-      expect(result).toEqual({ success: true, response: undefined });
-    });
-
-    it('should handle handlers returning null', async () => {
-      const gateway = createGateway(() => null, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
-
-      const result = await executor.execute(gateway, 'handleMessage', {}, {});
-
-      expect(result).toEqual({ success: true, response: null });
+      const nullGateway = createGateway(() => null, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+      const nullResult = await executor.execute(nullGateway, 'handleMessage', {}, {});
+      expect(nullResult).toEqual({ success: true, response: null });
     });
 
     it('should catch and return handler errors', async () => {
-      const gateway = createGateway(() => {
+      const syncGateway = createGateway(() => {
         throw new Error('Handler error');
       }, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+      const syncResult = await executor.execute(syncGateway, 'handleMessage', {}, {});
+      expect(syncResult.success).toBe(false);
+      expect(syncResult.error).toBeInstanceOf(Error);
+      expect(syncResult.error?.message).toBe('Handler error');
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, {});
-
-      expect(result.success).toBe(false);
-      expect(result.response).toBeUndefined();
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('Handler error');
-    });
-
-    it('should catch async handler errors', async () => {
-      const gateway = createGateway(async () => {
+      const asyncGateway = createGateway(async () => {
         throw new Error('Async error');
       }, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
+      const asyncResult = await executor.execute(asyncGateway, 'handleMessage', {}, {});
+      expect(asyncResult.success).toBe(false);
+      expect(asyncResult.error).toBeInstanceOf(Error);
+      expect(asyncResult.error?.message).toBe('Async error');
 
-      const result = await executor.execute(gateway, 'handleMessage', {}, {});
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('Async error');
-    });
-
-    it('should handle non-Error throws', async () => {
-      const gateway = createGateway(() => {
+      const nonErrorGateway = createGateway(() => {
         throw 'String error';
       }, [{ index: 0, type: ParamType.MESSAGE_BODY }]);
-
-      const result = await executor.execute(gateway, 'handleMessage', {}, {});
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('String error');
+      const nonErrorResult = await executor.execute(nonErrorGateway, 'handleMessage', {}, {});
+      expect(nonErrorResult.success).toBe(false);
+      expect(nonErrorResult.error).toBeInstanceOf(Error);
+      expect(nonErrorResult.error?.message).toBe('String error');
     });
 
     it('should return error when method not found', async () => {

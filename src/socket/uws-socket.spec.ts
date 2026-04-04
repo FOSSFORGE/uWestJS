@@ -3,6 +3,8 @@ import { UwsSocketImpl } from './uws-socket';
 describe('UwsSocketImpl', () => {
   let socket: UwsSocketImpl;
   let mockNativeSocket: any;
+  let mockRoomManager: any;
+  let mockBroadcastFn: jest.Mock;
 
   beforeEach(() => {
     // Create a mock native socket
@@ -12,7 +14,19 @@ describe('UwsSocketImpl', () => {
       getBufferedAmount: jest.fn().mockReturnValue(0),
     };
 
-    socket = new UwsSocketImpl('test-id-123', mockNativeSocket);
+    // Create a mock room manager
+    mockRoomManager = {
+      join: jest.fn(),
+      leave: jest.fn(),
+      leaveAll: jest.fn(),
+      getClientsInRoom: jest.fn().mockReturnValue(new Set()),
+      getRoomsForClient: jest.fn().mockReturnValue(new Set()),
+    };
+
+    // Create a mock broadcast function
+    mockBroadcastFn = jest.fn();
+
+    socket = new UwsSocketImpl('test-id-123', mockNativeSocket, mockRoomManager, mockBroadcastFn);
   });
 
   describe('initialization', () => {
@@ -32,70 +46,50 @@ describe('UwsSocketImpl', () => {
   });
 
   describe('emit', () => {
-    it('should send a message with event and data', () => {
+    it('should send messages with various data types', () => {
       socket.emit('test-event', { message: 'hello' });
-
-      expect(mockNativeSocket.send).toHaveBeenCalledTimes(1);
       expect(mockNativeSocket.send).toHaveBeenCalledWith(
         JSON.stringify({ event: 'test-event', data: { message: 'hello' } })
       );
-    });
 
-    it('should handle string data', () => {
+      mockNativeSocket.send.mockClear();
       socket.emit('message', 'hello world');
-
       expect(mockNativeSocket.send).toHaveBeenCalledWith(
         JSON.stringify({ event: 'message', data: 'hello world' })
       );
-    });
 
-    it('should handle number data', () => {
+      mockNativeSocket.send.mockClear();
       socket.emit('count', 42);
-
       expect(mockNativeSocket.send).toHaveBeenCalledWith(
         JSON.stringify({ event: 'count', data: 42 })
       );
-    });
 
-    it('should handle null data', () => {
+      mockNativeSocket.send.mockClear();
       socket.emit('empty', null);
-
       expect(mockNativeSocket.send).toHaveBeenCalledWith(
         JSON.stringify({ event: 'empty', data: null })
       );
     });
 
-    it('should handle undefined data', () => {
+    it('should handle undefined or omitted data', () => {
       socket.emit('ping', undefined);
-
-      // JSON.stringify omits undefined values, so data key is not included
       expect(mockNativeSocket.send).toHaveBeenCalledWith(JSON.stringify({ event: 'ping' }));
-    });
 
-    it('should handle omitted data parameter', () => {
+      mockNativeSocket.send.mockClear();
       socket.emit('heartbeat');
-
-      // When data is omitted, it's undefined and JSON.stringify omits it
       expect(mockNativeSocket.send).toHaveBeenCalledWith(JSON.stringify({ event: 'heartbeat' }));
     });
 
-    it('should throw error if send fails', () => {
+    it('should throw error if send fails or data is non-serializable', () => {
       mockNativeSocket.send.mockImplementation(() => {
         throw new Error('Send failed');
       });
+      expect(() => socket.emit('test', 'data')).toThrow('Failed to emit event "test"');
 
-      expect(() => {
-        socket.emit('test', 'data');
-      }).toThrow('Failed to emit event "test"');
-    });
-
-    it('should handle non-serializable data', () => {
+      mockNativeSocket.send.mockRestore();
       const circular: any = {};
       circular.self = circular;
-
-      expect(() => {
-        socket.emit('test', circular);
-      }).toThrow();
+      expect(() => socket.emit('test', circular)).toThrow();
     });
   });
 
@@ -120,63 +114,92 @@ describe('UwsSocketImpl', () => {
   describe('getBufferedAmount', () => {
     it('should return buffered amount from native socket', () => {
       mockNativeSocket.getBufferedAmount.mockReturnValue(1024);
+      expect(socket.getBufferedAmount()).toBe(1024);
 
-      const amount = socket.getBufferedAmount();
-
-      expect(amount).toBe(1024);
-      expect(mockNativeSocket.getBufferedAmount).toHaveBeenCalledTimes(1);
+      mockNativeSocket.getBufferedAmount.mockReturnValue(0);
+      expect(socket.getBufferedAmount()).toBe(0);
     });
 
     it('should return 0 if native socket throws error', () => {
       mockNativeSocket.getBufferedAmount.mockImplementation(() => {
         throw new Error('Socket closed');
       });
-
-      const amount = socket.getBufferedAmount();
-
-      expect(amount).toBe(0);
-    });
-
-    it('should handle zero buffered amount', () => {
-      mockNativeSocket.getBufferedAmount.mockReturnValue(0);
-
-      const amount = socket.getBufferedAmount();
-
-      expect(amount).toBe(0);
-    });
-
-    it('should handle large buffered amount', () => {
-      mockNativeSocket.getBufferedAmount.mockReturnValue(1024 * 1024 * 10); // 10MB
-
-      const amount = socket.getBufferedAmount();
-
-      expect(amount).toBe(1024 * 1024 * 10);
+      expect(socket.getBufferedAmount()).toBe(0);
     });
   });
 
-  describe('room methods (not yet implemented)', () => {
-    it('should throw error for join', () => {
-      expect(() => {
+  describe('room operations', () => {
+    describe('join', () => {
+      it('should join a single room', () => {
         socket.join('room1');
-      }).toThrow('Room management not yet implemented');
+        expect(mockRoomManager.join).toHaveBeenCalledWith('test-id-123', 'room1');
+      });
+
+      it('should join multiple rooms', () => {
+        socket.join(['room1', 'room2']);
+        expect(mockRoomManager.join).toHaveBeenCalledWith('test-id-123', ['room1', 'room2']);
+      });
     });
 
-    it('should throw error for leave', () => {
-      expect(() => {
+    describe('leave', () => {
+      it('should leave a single room', () => {
         socket.leave('room1');
-      }).toThrow('Room management not yet implemented');
+        expect(mockRoomManager.leave).toHaveBeenCalledWith('test-id-123', 'room1');
+      });
+
+      it('should leave multiple rooms', () => {
+        socket.leave(['room1', 'room2']);
+        expect(mockRoomManager.leave).toHaveBeenCalledWith('test-id-123', ['room1', 'room2']);
+      });
     });
 
-    it('should throw error for to', () => {
-      expect(() => {
-        socket.to('room1');
-      }).toThrow('Room management not yet implemented');
+    describe('to', () => {
+      it('should emit to single or multiple rooms with chaining', () => {
+        socket.to('room1').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], undefined);
+
+        mockBroadcastFn.mockClear();
+        socket.to(['room1', 'room2']).emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], undefined);
+
+        mockBroadcastFn.mockClear();
+        socket.to('room1').to('room2').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], undefined);
+      });
+
+      it('should support except() for excluding clients', () => {
+        socket.to('room1').except('client-2').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'client-2');
+      });
     });
 
-    it('should throw error for broadcast', () => {
-      expect(() => {
-        socket.broadcast;
-      }).toThrow('Room management not yet implemented');
+    describe('broadcast', () => {
+      it('should broadcast to all clients except sender', () => {
+        socket.broadcast.emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, undefined, 'test-id-123');
+      });
+
+      it('should broadcast to rooms with chaining', () => {
+        socket.broadcast.to('room1').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'test-id-123');
+
+        mockBroadcastFn.mockClear();
+        socket.broadcast.to(['room1', 'room2']).emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], 'test-id-123');
+
+        mockBroadcastFn.mockClear();
+        socket.broadcast.to('room1').to('room2').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1', 'room2'], 'test-id-123');
+      });
+
+      it('should support except() on broadcast', () => {
+        socket.broadcast.except('client-2').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, undefined, 'test-id-123');
+
+        mockBroadcastFn.mockClear();
+        socket.broadcast.to('room1').except('client-2').emit('message', { text: 'hello' });
+        expect(mockBroadcastFn).toHaveBeenCalledWith('message', { text: 'hello' }, ['room1'], 'test-id-123');
+      });
     });
   });
 
@@ -188,7 +211,7 @@ describe('UwsSocketImpl', () => {
   });
 
   describe('data property', () => {
-    it('should allow storing user information', () => {
+    it('should allow storing and updating user data', () => {
       interface UserData {
         userId: string;
         username: string;
@@ -205,53 +228,9 @@ describe('UwsSocketImpl', () => {
       expect(typedSocket.data.userId).toBe('user-123');
       expect(typedSocket.data.username).toBe('john_doe');
       expect(typedSocket.data.role).toBe('admin');
-    });
 
-    it('should allow updating data', () => {
-      interface CountData {
-        count: number;
-      }
-
-      const typedSocket = socket as UwsSocketImpl<CountData>;
-      typedSocket.data = { count: 0 };
-      expect(typedSocket.data.count).toBe(0);
-
-      typedSocket.data = { count: 1 };
-      expect(typedSocket.data.count).toBe(1);
-    });
-
-    it('should allow storing complex objects', () => {
-      interface ComplexData {
-        user: {
-          id: string;
-          profile: {
-            name: string;
-            age: number;
-          };
-        };
-        session: {
-          token: string;
-          expiresAt: Date;
-        };
-      }
-
-      const typedSocket = socket as UwsSocketImpl<ComplexData>;
-      typedSocket.data = {
-        user: {
-          id: '123',
-          profile: {
-            name: 'John',
-            age: 30,
-          },
-        },
-        session: {
-          token: 'abc123',
-          expiresAt: new Date(),
-        },
-      };
-
-      expect(typedSocket.data.user.profile.name).toBe('John');
-      expect(typedSocket.data.session.token).toBe('abc123');
+      typedSocket.data = { userId: 'user-456', username: 'jane_doe', role: 'user' };
+      expect(typedSocket.data.userId).toBe('user-456');
     });
   });
 });

@@ -147,8 +147,24 @@ export class MessageRouter {
     if (typeof pattern === 'string') {
       return pattern;
     }
-    // For object patterns, create a stable JSON string key
-    return JSON.stringify(pattern, Object.keys(pattern).sort());
+    // For object patterns, create a stable JSON string key with sorted keys (recursively)
+    return JSON.stringify(this.sortObjectKeys(pattern));
+  }
+
+  /**
+   * Recursively sorts object keys for stable serialization
+   * @private
+   */
+  private sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      const value = obj[key];
+      sorted[key] =
+        value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? this.sortObjectKeys(value as Record<string, unknown>)
+          : value;
+    }
+    return sorted;
   }
 
   /**

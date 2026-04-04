@@ -11,6 +11,8 @@ import type { WebSocketClient } from '../interfaces/websocket-client.interface';
 import { MetadataScanner } from '../router/metadata-scanner';
 import { MessageRouter } from '../router/message-router';
 import { HandlerExecutor } from '../router/handler-executor';
+import { RoomManager } from '../rooms';
+import { UwsSocketImpl } from '../socket/uws-socket';
 
 /**
  * Extended WebSocket with client data
@@ -36,6 +38,7 @@ export class UwsAdapter implements WebSocketAdapter {
   private app!: uWS.TemplatedApp;
   private listenSocket: false | uWS.us_listen_socket = false;
   private clients = new Map<string, ExtendedWebSocket>();
+  private sockets = new Map<string, UwsSocketImpl>(); // Track wrapped sockets
   private readonly logger = new Logger(UwsAdapter.name);
   private readonly options: ResolvedUwsAdapterOptions;
   private wsHandler?: {
@@ -48,6 +51,7 @@ export class UwsAdapter implements WebSocketAdapter {
   private readonly metadataScanner = new MetadataScanner();
   private readonly messageRouter = new MessageRouter();
   private readonly handlerExecutor = new HandlerExecutor();
+  private readonly roomManager = new RoomManager();
   private gatewayInstance?: object;
 
   constructor(_appInstance: unknown, options?: UwsAdapterOptions) {
@@ -101,6 +105,15 @@ export class UwsAdapter implements WebSocketAdapter {
           extWs.id = id;
           this.clients.set(id, extWs);
 
+          // Create wrapped socket with room support
+          const socket = new UwsSocketImpl(
+            id,
+            extWs,
+            this.roomManager,
+            this.broadcastToRooms.bind(this)
+          );
+          this.sockets.set(id, socket);
+
           this.logger.debug(`Client connected: ${id} (Total: ${this.clients.size})`);
 
           try {
@@ -142,7 +155,11 @@ export class UwsAdapter implements WebSocketAdapter {
           const id = extWs.id;
 
           if (id) {
+            // Remove client from all rooms
+            this.roomManager.leaveAll(id);
+            
             this.clients.delete(id);
+            this.sockets.delete(id);
             this.logger.debug(`Client disconnected: ${id} (Total: ${this.clients.size})`);
           }
 
@@ -234,6 +251,8 @@ export class UwsAdapter implements WebSocketAdapter {
     });
 
     this.clients.clear();
+    this.sockets.clear();
+    this.roomManager.clear();
     this.logger.log('All client connections closed');
   }
 
@@ -274,16 +293,7 @@ export class UwsAdapter implements WebSocketAdapter {
     if (!message) return false;
 
     try {
-      const result = client.send(message);
-      // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
-      if (result === 2) {
-        this.logger.warn(`Message dropped for client ${clientId} due to backpressure`);
-        return false;
-      }
-      if (result === 1) {
-        this.logger.debug(`Message queued for client ${clientId} (backpressure)`);
-      }
-      return true;
+      return this.sendMessage(client, message, clientId);
     } catch (error) {
       this.logger.error(`Failed to send to client ${clientId}: ${this.formatError(error)}`);
       return false;
@@ -298,31 +308,9 @@ export class UwsAdapter implements WebSocketAdapter {
     const message = this.serializeMessage(data, 'broadcast');
     if (!message) return;
 
-    let successCount = 0;
-    let failCount = 0;
-    let droppedCount = 0;
-
-    this.clients.forEach((client, id) => {
-      try {
-        const result = client.send(message);
-        // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
-        if (result === 2) {
-          this.logger.warn(`Broadcast message dropped for client ${id} due to backpressure`);
-          droppedCount++;
-        } else {
-          successCount++;
-          if (result === 1) {
-            this.logger.debug(`Broadcast message queued for client ${id} (backpressure)`);
-          }
-        }
-      } catch (error) {
-        this.logger.error(`Failed to broadcast to client ${id}: ${this.formatError(error)}`);
-        failCount++;
-      }
-    });
-
+    const stats = this.sendToMultipleClients(this.clients, message);
     this.logger.debug(
-      `Broadcast complete: ${successCount} succeeded, ${droppedCount} dropped, ${failCount} failed`
+      `Broadcast complete: ${stats.success} succeeded, ${stats.dropped} dropped, ${stats.failed} failed`
     );
   }
 
@@ -345,6 +333,44 @@ export class UwsAdapter implements WebSocketAdapter {
    */
   hasClient(clientId: string): boolean {
     return this.clients.has(clientId);
+  }
+
+  /**
+   * Get a wrapped socket by client ID
+   * @param clientId - Client identifier
+   * @returns UwsSocket instance or undefined
+   */
+  getSocket(clientId: string): UwsSocketImpl | undefined {
+    return this.sockets.get(clientId);
+  }
+
+  /**
+   * Broadcast to specific rooms
+   * @param event - Event name
+   * @param data - Data to send
+   * @param rooms - Optional array of room names (if not provided, broadcasts to all)
+   * @param except - Optional client ID to exclude from broadcast
+   */
+  private broadcastToRooms(
+    event: string,
+    data: unknown,
+    rooms?: string[],
+    except?: string
+  ): void {
+    const targetClients = this.getTargetClients(rooms, except);
+    const message = this.serializeMessage({ event, data }, 'room broadcast');
+    if (!message) return;
+
+    const clientMap = new Map<string, ExtendedWebSocket>();
+    targetClients.forEach((clientId) => {
+      const client = this.clients.get(clientId);
+      if (client) clientMap.set(clientId, client);
+    });
+
+    const stats = this.sendToMultipleClients(clientMap, message);
+    this.logger.debug(
+      `Room broadcast complete: ${stats.success} succeeded, ${stats.dropped} dropped, ${stats.failed} failed (rooms: ${rooms?.join(', ') || 'all'})`
+    );
   }
 
   /**
@@ -423,31 +449,94 @@ export class UwsAdapter implements WebSocketAdapter {
    * Formats the response in NestJS WebSocket format
    */
   private sendResponse(client: ExtendedWebSocket, event: string, data: unknown): void {
-    const response = {
-      event,
-      data,
-    };
-
-    const message = this.serializeMessage(response, `response to ${client.id}`);
+    const message = this.serializeMessage({ event, data }, `response to ${client.id}`);
     if (!message) return;
 
     try {
-      const result = client.send(message);
-      // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
-      if (result === 2) {
-        this.logger.warn(
-          `Response dropped for client ${client.id} due to backpressure (event: ${event})`
-        );
-      } else if (result === 1) {
-        this.logger.debug(
-          `Response queued for client ${client.id} (backpressure, event: ${event})`
-        );
-      }
+      this.sendMessage(client, message, client.id, event);
     } catch (error) {
       this.logger.error(
         `Failed to send response to client ${client.id}: ${this.formatError(error)}`
       );
     }
+  }
+
+  /**
+   * Get target clients for broadcast
+   * @internal
+   */
+  private getTargetClients(rooms?: string[], except?: string): Set<string> {
+    let targetClients: Set<string>;
+
+    if (rooms?.length) {
+      targetClients = new Set<string>();
+      for (const room of rooms) {
+        const roomClients = this.roomManager.getClientsInRoom(room);
+        roomClients.forEach((clientId) => targetClients.add(clientId));
+      }
+    } else {
+      targetClients = new Set(this.clients.keys());
+    }
+
+    if (except) {
+      targetClients.delete(except);
+    }
+
+    return targetClients;
+  }
+
+  /**
+   * Send message to a single client and handle result
+   * @internal
+   */
+  private sendMessage(
+    client: ExtendedWebSocket,
+    message: string,
+    clientId?: string,
+    event?: string
+  ): boolean {
+    const result = client.send(message);
+    const id = clientId || client.id || 'unknown';
+    const eventInfo = event ? ` (event: ${event})` : '';
+
+    // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
+    if (result === 2) {
+      this.logger.warn(`Message dropped for client ${id} due to backpressure${eventInfo}`);
+      return false;
+    }
+    if (result === 1) {
+      this.logger.debug(`Message queued for client ${id} (backpressure${eventInfo})`);
+    }
+    return true;
+  }
+
+  /**
+   * Send message to multiple clients and track statistics
+   * @internal
+   */
+  private sendToMultipleClients(
+    clients: Map<string, ExtendedWebSocket>,
+    message: string
+  ): { success: number; dropped: number; failed: number } {
+    let success = 0;
+    let dropped = 0;
+    let failed = 0;
+
+    clients.forEach((client, id) => {
+      try {
+        const result = client.send(message);
+        if (result === 2) {
+          dropped++;
+        } else {
+          success++;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to send to client ${id}: ${this.formatError(error)}`);
+        failed++;
+      }
+    });
+
+    return { success, dropped, failed };
   }
 
   /**

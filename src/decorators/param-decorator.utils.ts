@@ -58,10 +58,20 @@ export function createParamDecorator(
       ...(Reflect.getMetadata(PARAM_ARGS_METADATA, target, propertyKey) || []),
     ];
 
+    // Check if this parameter index already has metadata
+    const existingIndex = existingParams.findIndex((p) => p.index === parameterIndex);
+    if (existingIndex !== -1) {
+      const existing = existingParams[existingIndex];
+      throw new Error(
+        `${decoratorName} decorator: parameter at index ${parameterIndex} already has @${existing.type} decorator applied. ` +
+          `Only one parameter decorator is allowed per parameter.`
+      );
+    }
+
     const paramMetadata: ParamMetadata = {
       index: parameterIndex,
       type,
-      data,
+      ...(data !== undefined && { data }),
     };
 
     existingParams.push(paramMetadata);

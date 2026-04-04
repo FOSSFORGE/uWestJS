@@ -60,30 +60,7 @@ describe('UwsAdapter', () => {
       expect(() => adapter.broadcast({ test: 'data' })).not.toThrow();
     });
 
-    it('should handle non-serializable data in sendToClient', () => {
-      // Create a mock client and add it to the adapter's client map
-      const mockClient = {
-        send: jest.fn().mockReturnValue(0), // Mock successful send
-        id: 'mock-client-id',
-      } as any;
-
-      // Access private clients map via type assertion for testing
-      (adapter as any).clients.set('mock-client-id', mockClient);
-
-      try {
-        // Test with circular object - should fail during serialization
-        const result = adapter.sendToClient('mock-client-id', createCircularObject());
-
-        expect(result).toBe(false);
-        expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
-      } finally {
-        // Cleanup
-        (adapter as any).clients.delete('mock-client-id');
-      }
-    });
-
-    it('should handle non-serializable data in broadcast', () => {
-      // Create a mock client and add it to the adapter's client map
+    it('should handle non-serializable data gracefully', () => {
       const mockClient = {
         send: jest.fn().mockReturnValue(0),
         id: 'mock-client-id',
@@ -92,34 +69,25 @@ describe('UwsAdapter', () => {
       (adapter as any).clients.set('mock-client-id', mockClient);
 
       try {
-        // Test with circular object - should not throw but should log error
+        // Test sendToClient with circular object
+        const sendResult = adapter.sendToClient('mock-client-id', createCircularObject());
+        expect(sendResult).toBe(false);
+        expect(mockClient.send).not.toHaveBeenCalled();
+
+        // Test broadcast with circular object
         expect(() => adapter.broadcast(createCircularObject())).not.toThrow();
-        expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
+        expect(mockClient.send).not.toHaveBeenCalled();
       } finally {
-        // Cleanup
         (adapter as any).clients.delete('mock-client-id');
       }
     });
   });
 
   describe('server lifecycle', () => {
-    it('should create server', async () => {
-      const server = await adapter.create(8099);
-      expect(server).toBeDefined();
-    });
-
-    it('should close gracefully', () => {
-      expect(() => adapter.close(null)).not.toThrow();
-    });
-
     it('should create and close server', async () => {
       const server = await adapter.create(8099);
       expect(server).toBeDefined();
       expect(() => adapter.close(null)).not.toThrow();
-    });
-
-    it('should dispose gracefully', () => {
-      expect(() => adapter.dispose()).not.toThrow();
     });
 
     it('should handle multiple dispose calls', () => {

@@ -92,29 +92,23 @@ describe('MessageRouter', () => {
       expect(receivedData).toBe(mockData);
     });
 
-    it('should handle async handlers', async () => {
+    it('should handle async handlers and Promises', async () => {
       router.registerHandlers([
         createHandler('async', async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return 'async result';
         }),
       ]);
-
-      const result = await router.route({ event: 'async' }, {});
-
-      expect(result).toEqual({
+      const asyncResult = await router.route({ event: 'async' }, {});
+      expect(asyncResult).toEqual({
         handled: true,
         response: 'async result',
         error: undefined,
       });
-    });
 
-    it('should handle Promise-returning handlers', async () => {
       router.registerHandlers([createHandler('promise', () => Promise.resolve('promise result'))]);
-
-      const result = await router.route({ event: 'promise' }, {});
-
-      expect(result).toEqual({
+      const promiseResult = await router.route({ event: 'promise' }, {});
+      expect(promiseResult).toEqual({
         handled: true,
         response: 'promise result',
         error: undefined,
@@ -158,78 +152,74 @@ describe('MessageRouter', () => {
       });
     });
 
+    it('should match nested object patterns with keys in different order', async () => {
+      const pattern = { cmd: 'test', meta: { version: 1, type: 'request' } };
+      router.registerHandlers([createHandler(pattern, () => 'nested matched')]);
+
+      // Same pattern but keys in different order at all levels
+      const result = await router.route(
+        { event: { meta: { type: 'request', version: 1 }, cmd: 'test' } },
+        {}
+      );
+
+      expect(result).toEqual({
+        handled: true,
+        response: 'nested matched',
+        error: undefined,
+      });
+    });
+
     it('should catch and return handler errors', async () => {
       router.registerHandlers([
         createHandler('error', () => {
           throw new Error('Handler error');
         }),
       ]);
+      const syncResult = await router.route({ event: 'error' }, {});
+      expect(syncResult.handled).toBe(true);
+      expect(syncResult.error).toBeInstanceOf(Error);
+      expect(syncResult.error?.message).toBe('Handler error');
 
-      const result = await router.route({ event: 'error' }, {});
-
-      expect(result.handled).toBe(true);
-      expect(result.response).toBeUndefined();
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('Handler error');
-    });
-
-    it('should catch async handler errors', async () => {
       router.registerHandlers([
         createHandler('async-error', async () => {
           throw new Error('Async error');
         }),
       ]);
+      const asyncResult = await router.route({ event: 'async-error' }, {});
+      expect(asyncResult.handled).toBe(true);
+      expect(asyncResult.error).toBeInstanceOf(Error);
+      expect(asyncResult.error?.message).toBe('Async error');
 
-      const result = await router.route({ event: 'async-error' }, {});
-
-      expect(result.handled).toBe(true);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('Async error');
-    });
-
-    it('should handle non-Error throws', async () => {
       router.registerHandlers([
         createHandler('string-error', () => {
           throw 'String error';
         }),
       ]);
-
-      const result = await router.route({ event: 'string-error' }, {});
-
-      expect(result.handled).toBe(true);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('String error');
+      const nonErrorResult = await router.route({ event: 'string-error' }, {});
+      expect(nonErrorResult.handled).toBe(true);
+      expect(nonErrorResult.error).toBeInstanceOf(Error);
+      expect(nonErrorResult.error?.message).toBe('String error');
     });
 
-    it('should handle handlers returning undefined', async () => {
+    it('should handle handlers returning undefined, null, or objects', async () => {
       router.registerHandlers([createHandler('void', () => undefined)]);
-
-      const result = await router.route({ event: 'void' }, {});
-
-      expect(result).toEqual({
+      const voidResult = await router.route({ event: 'void' }, {});
+      expect(voidResult).toEqual({
         handled: true,
         response: undefined,
         error: undefined,
       });
-    });
 
-    it('should handle handlers returning null', async () => {
       router.registerHandlers([createHandler('null', () => null)]);
+      const nullResult = await router.route({ event: 'null' }, {});
+      expect(nullResult.handled).toBe(true);
+      expect(nullResult.response).toBeNull();
 
-      const result = await router.route({ event: 'null' }, {});
-
-      expect(result.handled).toBe(true);
-      expect(result.response).toBeNull();
-    });
-
-    it('should handle handlers returning objects', async () => {
       const responseObj = { status: 'ok', data: [1, 2, 3] };
       router.registerHandlers([createHandler('object', () => responseObj)]);
-
-      const result = await router.route({ event: 'object' }, {});
-
-      expect(result.handled).toBe(true);
-      expect(result.response).toBe(responseObj);
+      const objectResult = await router.route({ event: 'object' }, {});
+      expect(objectResult.handled).toBe(true);
+      expect(objectResult.response).toBe(responseObj);
     });
   });
 
