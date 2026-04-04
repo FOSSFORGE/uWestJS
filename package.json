@@ -1,6 +1,6 @@
 {
   "name": "uwestjs",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "High-performance WebSocket adapter for NestJS using uWebSockets.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,6 +13,8 @@
     "build": "tsc -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "test": "jest",
+    "test:unit": "jest --testPathIgnorePatterns='.integration.spec.ts'",
+    "test:integration": "jest --testPathPattern='.integration.spec.ts'",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "lint": "eslint src/**/*.ts",

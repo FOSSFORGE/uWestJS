@@ -119,11 +119,10 @@ describe('UwsAdapter Integration with Router', () => {
     });
 
     it('should handle invalid gateway instance', () => {
+      // registerGateway is the preferred API for gateway registration
+      // Only test null/undefined as other types are TypeScript errors
       expect(() => adapter.registerGateway(null as any)).not.toThrow();
-      expect(() => adapter.bindMessageHandlers(undefined, [], () => null as any)).not.toThrow();
-      expect(() =>
-        adapter.bindMessageHandlers('not an object', [], () => null as any)
-      ).not.toThrow();
+      expect(() => adapter.registerGateway(undefined as any)).not.toThrow();
     });
 
     it('should handle gateway with no handlers', () => {

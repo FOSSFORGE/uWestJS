@@ -26,12 +26,10 @@ function applyParamDecorator(
   type: ParamType,
   data?: string
 ): void {
-  // If target is already a prototype (has constructor property), use it directly
-  // Otherwise get the prototype from the instance
-  const metadataTarget =
-    'constructor' in target && typeof (target as any).constructor === 'function'
-      ? target
-      : Object.getPrototypeOf(target);
+  // Check if target IS the prototype (not an instance)
+  const isPrototype =
+    target.constructor && (target.constructor as { prototype?: unknown }).prototype === target;
+  const metadataTarget = isPrototype ? target : Object.getPrototypeOf(target);
 
   const existingParams = Reflect.getMetadata(PARAM_ARGS_METADATA, metadataTarget, methodName) || [];
 

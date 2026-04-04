@@ -25,18 +25,25 @@ interface ExtendedWebSocket extends uWS.WebSocket<WebSocketClient> {
 /**
  * High-performance WebSocket adapter using uWebSockets.js
  *
+ * IMPORTANT: This adapter requires manual gateway registration using registerGateway().
+ * Unlike standard NestJS WebSocket adapters, bindMessageHandlers() is not used.
+ * This design choice provides better control over metadata scanning and handler registration.
+ *
  * Supports dependency injection for guards, pipes, and filters when a ModuleRef is provided.
  * Pass a ModuleRef to enable guards/pipes/filters with constructor dependencies.
  *
  * @example
  * ```typescript
- * // Without DI (guards/pipes/filters must have no constructor dependencies)
+ * // Basic setup with manual gateway registration
  * const app = await NestFactory.create(AppModule);
- * app.useWebSocketAdapter(new UwsAdapter(app, {
- *   port: 8099,
- *   maxPayloadLength: 16 * 1024,
- *   idleTimeout: 60,
- * }));
+ * const adapter = new UwsAdapter(app, { port: 8099 });
+ * app.useWebSocketAdapter(adapter);
+ *
+ * // Manually register your gateway
+ * const gateway = app.get(EventsGateway);
+ * adapter.registerGateway(gateway);
+ *
+ * await app.listen(3000);
  * ```
  *
  * @example
@@ -44,10 +51,17 @@ interface ExtendedWebSocket extends uWS.WebSocket<WebSocketClient> {
  * // With DI support (guards/pipes/filters can have constructor dependencies)
  * const app = await NestFactory.create(AppModule);
  * const moduleRef = app.get(ModuleRef); // Get NestJS ModuleRef
- * app.useWebSocketAdapter(new UwsAdapter(app, {
+ * const adapter = new UwsAdapter(app, {
  *   port: 8099,
  *   moduleRef, // Enable DI for guards/pipes/filters
- * }));
+ * });
+ * app.useWebSocketAdapter(adapter);
+ *
+ * // Manually register your gateway
+ * const gateway = app.get(EventsGateway);
+ * adapter.registerGateway(gateway);
+ *
+ * await app.listen(3000);
  * ```
  */
 export class UwsAdapter implements WebSocketAdapter {
@@ -57,7 +71,6 @@ export class UwsAdapter implements WebSocketAdapter {
   private sockets = new Map<string, UwsSocketImpl>(); // Track wrapped sockets
   private readonly logger = new Logger(UwsAdapter.name);
   private readonly options: ResolvedUwsAdapterOptions;
-  private readonly appInstance: unknown;
   private wsHandler?: {
     handleConnection: (ws: ExtendedWebSocket) => void;
     handleMessage: (ws: ExtendedWebSocket, data: string) => void;
@@ -71,11 +84,9 @@ export class UwsAdapter implements WebSocketAdapter {
   private readonly roomManager = new RoomManager();
   private readonly lifecycleHooksManager = new LifecycleHooksManager();
   private gatewayInstance?: object;
+  private bindMessageHandlersCalled = false;
 
   constructor(appInstance: unknown, options?: UwsAdapterOptions) {
-    // Store app instance to potentially access gateways later
-    this.appInstance = appInstance;
-
     // Apply default options
     // Note: port will be set in create() using NestJS-provided port as fallback
     this.options = {
@@ -91,7 +102,6 @@ export class UwsAdapter implements WebSocketAdapter {
     this.handlerExecutor = new HandlerExecutor({ moduleRef: options?.moduleRef });
 
     this.logger.log('UwsAdapter initialized');
-    this.logger.debug(`App instance type: ${appInstance?.constructor?.name || 'unknown'}`);
   }
 
   /**
@@ -138,8 +148,6 @@ export class UwsAdapter implements WebSocketAdapter {
             this.broadcastToRooms.bind(this)
           );
           this.sockets.set(id, socket);
-
-          this.logger.debug(`Client connected: ${id} (Total: ${this.clients.size})`);
 
           try {
             // Call lifecycle hook
@@ -190,7 +198,6 @@ export class UwsAdapter implements WebSocketAdapter {
 
             this.clients.delete(id);
             this.sockets.delete(id);
-            this.logger.debug(`Client disconnected: ${id} (Total: ${this.clients.size})`);
           }
 
           try {
@@ -242,6 +249,12 @@ export class UwsAdapter implements WebSocketAdapter {
 
     this.logger.log(`Registering gateway: ${gateway.constructor?.name || 'Unknown'}`);
 
+    if (this.gatewayInstance) {
+      this.logger.warn(
+        `Overwriting existing gateway ${this.gatewayInstance.constructor?.name} with ${gateway.constructor?.name}`
+      );
+    }
+
     // Store gateway instance
     this.gatewayInstance = gateway;
 
@@ -268,19 +281,39 @@ export class UwsAdapter implements WebSocketAdapter {
 
   /**
    * Bind message handlers (NestJS decorator-based routing)
-   * We don't use this - we use registerGateway() instead for self-scanning
    *
-   * @param gateway - The gateway instance (or client)
+   * IMPORTANT: This adapter does NOT use NestJS's automatic bindMessageHandlers mechanism.
+   * Instead, you must manually call registerGateway() to register your gateway.
+   *
+   * Why manual registration?
+   * - Better control over metadata scanning and handler registration timing
+   * - Explicit gateway lifecycle management (afterInit, handleConnection, handleDisconnect)
+   * - Clearer separation between adapter initialization and gateway registration
+   * - Allows for custom handler registration strategies
+   *
+   * This method is called by NestJS but intentionally ignored by this adapter.
+   *
+   * @param gateway - The gateway instance (ignored)
    * @param handlers - Message mapping properties (ignored)
    * @param _transform - Transform function (ignored)
+   *
+   * @see registerGateway() for the preferred registration method
    */
   bindMessageHandlers(
     gateway: unknown,
     handlers: MessageMappingProperties[],
     _transform: (data: unknown) => Observable<unknown>
   ): void {
-    // We use registerGateway() for our self-scanning approach
-    // This method is called by NestJS but we ignore it
+    // Warn on first call to alert developers about manual registration requirement
+    if (!this.bindMessageHandlersCalled) {
+      this.bindMessageHandlersCalled = true;
+      this.logger.warn(
+        'bindMessageHandlers() is not used by UwsAdapter. ' +
+          'Please call adapter.registerGateway(gateway) manually after app.useWebSocketAdapter(). ' +
+          'See class documentation for examples.'
+      );
+    }
+
     this.logger.debug(
       `bindMessageHandlers called (ignored) - gateway: ${gateway?.constructor?.name}, handlers: ${handlers?.length || 0}`
     );
@@ -363,10 +396,7 @@ export class UwsAdapter implements WebSocketAdapter {
     const message = this.serializeMessage(data, 'broadcast');
     if (!message) return;
 
-    const stats = this.sendToMultipleClients(this.clients, message);
-    this.logger.debug(
-      `Broadcast complete: ${stats.success} succeeded, ${stats.dropped} dropped, ${stats.failed} failed`
-    );
+    this.sendToMultipleClients(this.clients, message);
   }
 
   /**
@@ -422,10 +452,7 @@ export class UwsAdapter implements WebSocketAdapter {
       if (client) clientMap.set(clientId, client);
     });
 
-    const stats = this.sendToMultipleClients(clientMap, message);
-    this.logger.debug(
-      `Room broadcast complete: ${stats.success} succeeded, ${stats.dropped} dropped, ${stats.failed} failed (rooms: ${rooms?.join(', ') || 'all'})`
-    );
+    this.sendToMultipleClients(clientMap, message);
   }
 
   /**
@@ -476,10 +503,6 @@ export class UwsAdapter implements WebSocketAdapter {
         this.logger.warn(`No wrapped socket found for client ${clientId}`);
         return;
       }
-
-      this.logger.debug(
-        `Using wrapped socket for client ${clientId}, has join: ${typeof wrappedSocket.join}`
-      );
 
       // Execute handler with proper parameter injection
       const executionResult = await this.handlerExecutor.execute(
@@ -577,9 +600,6 @@ export class UwsAdapter implements WebSocketAdapter {
     if (result === 2) {
       this.logger.warn(`Message dropped for client ${id} due to backpressure${eventInfo}`);
       return false;
-    }
-    if (result === 1) {
-      this.logger.debug(`Message queued for client ${id} (backpressure${eventInfo})`);
     }
     return true;
   }
