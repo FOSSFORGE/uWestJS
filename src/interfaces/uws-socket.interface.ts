@@ -19,13 +19,14 @@ export interface UwsSocket<TData = unknown, TEmitData = unknown> {
   /**
    * Emit an event to this specific client
    * @param event - Event name
-   * @param data - Data to send
+   * @param data - Optional data to send
    * @example
    * ```typescript
    * socket.emit('message', { text: 'Hello!' });
+   * socket.emit('heartbeat'); // No data needed
    * ```
    */
-  emit(event: string, data: TEmitData): void;
+  emit(event: string, data?: TEmitData): void;
 
   /**
    * Disconnect this client
@@ -117,7 +118,7 @@ export interface BroadcastOperator<TEmitData = unknown> {
   /**
    * Emit event to all targeted clients
    * @param event - Event name
-   * @param data - Data to send
+   * @param data - Optional data to send
    */
-  emit(event: string, data: TEmitData): void;
+  emit(event: string, data?: TEmitData): void;
 }

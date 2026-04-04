@@ -5,6 +5,14 @@ import prettier from 'eslint-plugin-prettier';
 import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
+// Shared rules used across all TypeScript configurations
+const sharedRules = {
+  '@typescript-eslint/explicit-function-return-type': 'off',
+  '@typescript-eslint/explicit-module-boundary-types': 'off',
+  '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+  'prettier/prettier': 'error',
+};
+
 export default [
   // Ignore patterns
   {
@@ -35,23 +43,11 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       ...prettierConfig.rules,
+      ...sharedRules,
 
-      // TypeScript specific rules
-      '@typescript-eslint/interface-name-prefix': 'off',
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      // Source-specific rules
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_' },
-      ],
       '@typescript-eslint/no-require-imports': 'off',
-
-      // Disable problematic rules
-      'preserve-caught-error': 'off',
-
-      // Prettier integration
-      'prettier/prettier': 'error',
     },
   },
 
@@ -75,20 +71,11 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       ...prettierConfig.rules,
+      ...sharedRules,
 
-      // TypeScript specific rules
-      '@typescript-eslint/interface-name-prefix': 'off',
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      // Test-specific rules
       '@typescript-eslint/no-explicit-any': 'off', // Allow any in tests
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_' },
-      ],
       '@typescript-eslint/no-unused-expressions': 'off', // Allow in tests
-
-      // Prettier integration
-      'prettier/prettier': 'error',
     },
   },
 ];

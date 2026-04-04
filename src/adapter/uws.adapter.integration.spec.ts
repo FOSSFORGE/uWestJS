@@ -7,7 +7,7 @@ const MESSAGE_MAPPING_METADATA = 'microservices:message_mapping';
 /**
  * Helper to add @SubscribeMessage metadata to a method
  */
-function addMessageMetadata(target: object, methodName: string, event: string): void {
+function addMessageMetadata(target: object, event: string): void {
   Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, event, target);
 }
 
@@ -45,10 +45,10 @@ class TestGateway {
 }
 
 // Configure metadata for TestGateway methods
-addMessageMetadata(TestGateway.prototype.handlePing, 'handlePing', 'ping');
-addMessageMetadata(TestGateway.prototype.handleEcho, 'handleEcho', 'echo');
-addMessageMetadata(TestGateway.prototype.handleError, 'handleError', 'error');
-addMessageMetadata(TestGateway.prototype.handleNoResponse, 'handleNoResponse', 'no-response');
+addMessageMetadata(TestGateway.prototype.handlePing, 'ping');
+addMessageMetadata(TestGateway.prototype.handleEcho, 'echo');
+addMessageMetadata(TestGateway.prototype.handleError, 'error');
+addMessageMetadata(TestGateway.prototype.handleNoResponse, 'no-response');
 
 addParamMetadata(TestGateway.prototype, 'handlePing', [
   { index: 0, type: ParamType.CONNECTED_SOCKET },
@@ -92,7 +92,14 @@ describe('UwsAdapter Integration with Router', () => {
   describe('bindMessageHandlers', () => {
     it('should scan and register handlers from gateway', () => {
       adapter.bindMessageHandlers(gateway, [], () => null as any);
-      expect(gateway).toBeDefined();
+
+      // Verify handlers were actually registered
+      const messageRouter = (adapter as any).messageRouter;
+      expect(messageRouter.getHandlerCount()).toBe(4);
+      expect(messageRouter.hasHandler('ping')).toBe(true);
+      expect(messageRouter.hasHandler('echo')).toBe(true);
+      expect(messageRouter.hasHandler('error')).toBe(true);
+      expect(messageRouter.hasHandler('no-response')).toBe(true);
     });
 
     it('should handle invalid gateway instance', () => {
@@ -161,9 +168,8 @@ describe('UwsAdapter Integration with Router', () => {
       const mockClient = createMockClient();
       const message = JSON.stringify({ event: 'error', data: {} });
 
-      await expect(
-        (adapter as any).handleDecoratorBasedMessage(mockClient, message)
-      ).resolves.not.toThrow();
+      await (adapter as any).handleDecoratorBasedMessage(mockClient, message);
+      // Test passes if no rejection occurs
 
       expect(mockClient.send).not.toHaveBeenCalled();
     });
@@ -184,9 +190,8 @@ describe('UwsAdapter Integration with Router', () => {
     it('should handle invalid JSON gracefully', async () => {
       const mockClient = createMockClient();
 
-      await expect(
-        (adapter as any).handleDecoratorBasedMessage(mockClient, 'not valid json')
-      ).resolves.not.toThrow();
+      await (adapter as any).handleDecoratorBasedMessage(mockClient, 'not valid json');
+      // Test passes if no rejection occurs
 
       expect(mockClient.send).not.toHaveBeenCalled();
     });
@@ -209,9 +214,8 @@ describe('UwsAdapter Integration with Router', () => {
         data: { message: 'hello' },
       });
 
-      await expect(
-        (freshAdapter as any).handleDecoratorBasedMessage(mockClient, message)
-      ).resolves.not.toThrow();
+      await (freshAdapter as any).handleDecoratorBasedMessage(mockClient, message);
+      // Test passes if no rejection occurs
 
       expect(mockClient.send).not.toHaveBeenCalled();
       freshAdapter.dispose();

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { ParamType } from './message-body.decorator';
+import { ParamType, createParamDecorator } from './param-decorator.utils';
 
 /**
  * Decorator that injects the connected WebSocket client into a handler parameter
@@ -17,7 +17,5 @@ import { ParamType } from './message-body.decorator';
  * ```
  */
 export function ConnectedSocket(): ParameterDecorator {
-  // Import dynamically to avoid circular dependency
-  const { createParamDecorator } = require('./message-body.decorator');
   return createParamDecorator(ParamType.CONNECTED_SOCKET, 'ConnectedSocket');
 }

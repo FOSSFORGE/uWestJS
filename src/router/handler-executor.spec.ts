@@ -110,6 +110,19 @@ describe('HandlerExecutor', () => {
       expect(result).toEqual({ success: true, response: 'john' });
     });
 
+    it('should return entire array when data is array with property extraction', async () => {
+      const arrayData = ['item1', 'item2', 'item3'];
+      const gateway = createGateway(
+        (items) => items,
+        [{ index: 0, type: ParamType.MESSAGE_BODY, data: 'items' }]
+      );
+
+      const result = await executor.execute(gateway, 'handleMessage', {}, arrayData);
+
+      // Arrays are not subject to property extraction, return the whole array
+      expect(result).toEqual({ success: true, response: arrayData });
+    });
+
     it('should inject multiple parameters in correct order', async () => {
       const gateway = createGateway(
         (client, data) => ({ client, data }),

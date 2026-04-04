@@ -70,14 +70,16 @@ describe('UwsAdapter', () => {
       // Access private clients map via type assertion for testing
       (adapter as any).clients.set('mock-client-id', mockClient);
 
-      // Test with circular object - should fail during serialization
-      const result = adapter.sendToClient('mock-client-id', createCircularObject());
+      try {
+        // Test with circular object - should fail during serialization
+        const result = adapter.sendToClient('mock-client-id', createCircularObject());
 
-      expect(result).toBe(false);
-      expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
-
-      // Cleanup
-      (adapter as any).clients.delete('mock-client-id');
+        expect(result).toBe(false);
+        expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
+      } finally {
+        // Cleanup
+        (adapter as any).clients.delete('mock-client-id');
+      }
     });
 
     it('should handle non-serializable data in broadcast', () => {
@@ -89,12 +91,14 @@ describe('UwsAdapter', () => {
 
       (adapter as any).clients.set('mock-client-id', mockClient);
 
-      // Test with circular object - should not throw but should log error
-      expect(() => adapter.broadcast(createCircularObject())).not.toThrow();
-      expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
-
-      // Cleanup
-      (adapter as any).clients.delete('mock-client-id');
+      try {
+        // Test with circular object - should not throw but should log error
+        expect(() => adapter.broadcast(createCircularObject())).not.toThrow();
+        expect(mockClient.send).not.toHaveBeenCalled(); // Should fail before send is called
+      } finally {
+        // Cleanup
+        (adapter as any).clients.delete('mock-client-id');
+      }
     });
   });
 

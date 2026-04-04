@@ -13,8 +13,9 @@ const MESSAGE_MAPPING_METADATA = 'microservices:message_mapping';
 export interface MessageHandler {
   /**
    * The message pattern/event name to match
+   * Supports both string patterns and object patterns for NestJS compatibility
    */
-  message: string;
+  message: string | Record<string, unknown>;
 
   /**
    * The method name on the gateway class
@@ -32,7 +33,7 @@ export interface MessageHandler {
  */
 export class MetadataScanner {
   private readonly logger = new Logger(MetadataScanner.name);
-  private readonly cache = new Map<object, MessageHandler[]>();
+  private readonly cache = new WeakMap<object, MessageHandler[]>();
 
   /**
    * Scans a gateway instance for @SubscribeMessage decorators
@@ -65,13 +66,27 @@ export class MetadataScanner {
       const messagePattern = Reflect.getMetadata(MESSAGE_MAPPING_METADATA, method);
 
       if (messagePattern !== undefined) {
+        // Validate message pattern type
+        const isValidType =
+          typeof messagePattern === 'string' ||
+          (typeof messagePattern === 'object' &&
+            messagePattern !== null &&
+            !Array.isArray(messagePattern));
+
+        if (!isValidType) {
+          this.logger.warn(
+            `Handler ${methodName} has invalid message pattern type: ${typeof messagePattern}. Expected string or object.`
+          );
+          continue; // Skip invalid handlers
+        }
+
         handlers.push({
           message: messagePattern,
           methodName,
           callback: method.bind(instance),
         });
 
-        this.logger.debug(`Discovered handler: ${methodName} -> ${messagePattern}`);
+        this.logger.debug(`Discovered handler: ${methodName} -> ${JSON.stringify(messagePattern)}`);
       }
     }
 
@@ -79,26 +94,40 @@ export class MetadataScanner {
   }
 
   /**
-   * Gets all method names from a prototype, excluding constructor
+   * Gets all method names from a prototype chain, excluding constructor
+   * Walks up the prototype chain to support inheritance
    */
   private getMethodNames(prototype: object): string[] {
-    return Object.getOwnPropertyNames(prototype).filter(
-      (name) =>
-        name !== 'constructor' && typeof prototype[name as keyof typeof prototype] === 'function'
-    );
+    const methodNames = new Set<string>();
+    let current = prototype;
+
+    // Walk up the prototype chain until we reach Object.prototype
+    while (current && current !== Object.prototype) {
+      Object.getOwnPropertyNames(current)
+        .filter(
+          (name) =>
+            name !== 'constructor' &&
+            typeof (current as Record<string, unknown>)[name] === 'function'
+        )
+        .forEach((name) => methodNames.add(name));
+
+      current = Object.getPrototypeOf(current);
+    }
+
+    return Array.from(methodNames);
   }
 
   /**
-   * Clears the metadata cache
+   * Gets the method name for a specific event/message pattern
+   * @param instance - The gateway instance
+   * @param event - The event/message pattern to look up
+   * @returns The method name if found, null otherwise
    */
-  clearCache(): void {
-    this.cache.clear();
-  }
+  getMethodNameForEvent(instance: object, event: string): string | null {
+    const handlers = this.cache.get(instance);
+    if (!handlers) return null;
 
-  /**
-   * Gets the number of cached gateway instances
-   */
-  getCacheSize(): number {
-    return this.cache.size;
+    const handler = handlers.find((h) => h.message === event);
+    return handler ? handler.methodName : null;
   }
 }

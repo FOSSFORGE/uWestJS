@@ -77,25 +77,48 @@ export class HandlerExecutor {
     const metadata: ParamMetadata[] =
       Reflect.getMetadata(PARAM_ARGS_METADATA, instance.constructor, methodName) || [];
 
-    return metadata.sort((a, b) => a.index - b.index);
+    // Create a copy before sorting to avoid mutating the original metadata
+    return [...metadata].sort((a, b) => a.index - b.index);
   }
 
   /**
    * Builds the arguments array for handler execution
+   *
+   * Behavior:
+   * - No decorators: Returns [client, data] as fallback for undecorated handlers
+   * - With decorators: Creates array with decorated parameters at their specified indices
+   * - Partial decorators: Undecorated parameter positions will be undefined
+   *
    * @param paramMetadata - Parameter metadata
    * @param client - The WebSocket client
    * @param data - The message data
    * @returns Array of arguments in correct order
+   *
+   * @example
+   * ```typescript
+   * // No decorators - fallback to [client, data]
+   * handleMessage(client, data) { }
+   *
+   * // All decorated - explicit parameter injection
+   * handleMessage(@ConnectedSocket() client, @MessageBody() data) { }
+   *
+   * // Partial decorators - undecorated positions are undefined
+   * handleMessage(@MessageBody() data, someParam) { } // someParam will be undefined
+   * ```
    */
   private buildArguments(
     paramMetadata: ParamMetadata[],
     client: unknown,
     data: unknown
   ): unknown[] {
+    // Fallback for handlers without parameter decorators
+    // Assumes signature: (client, data) => void
     if (paramMetadata.length === 0) {
       return [client, data];
     }
 
+    // Build arguments array based on decorator metadata
+    // Note: Undecorated parameter positions will remain undefined
     const maxIndex = Math.max(...paramMetadata.map((p) => p.index));
     const args: unknown[] = new Array(maxIndex + 1);
 
@@ -120,7 +143,9 @@ export class HandlerExecutor {
 
       case ParamType.MESSAGE_BODY:
       case ParamType.PAYLOAD:
-        if (param.data && data && typeof data === 'object') {
+        // Extract property from data if specified
+        // Note: Arrays are excluded from property extraction to avoid silent undefined returns
+        if (param.data && data && typeof data === 'object' && !Array.isArray(data)) {
           return (data as Record<string, unknown>)[param.data];
         }
         return data;

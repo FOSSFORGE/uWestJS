@@ -68,9 +68,15 @@ describe('UwsSocketImpl', () => {
     it('should handle undefined data', () => {
       socket.emit('ping', undefined);
 
-      expect(mockNativeSocket.send).toHaveBeenCalledWith(
-        JSON.stringify({ event: 'ping', data: undefined })
-      );
+      // JSON.stringify omits undefined values, so data key is not included
+      expect(mockNativeSocket.send).toHaveBeenCalledWith(JSON.stringify({ event: 'ping' }));
+    });
+
+    it('should handle omitted data parameter', () => {
+      socket.emit('heartbeat');
+
+      // When data is omitted, it's undefined and JSON.stringify omits it
+      expect(mockNativeSocket.send).toHaveBeenCalledWith(JSON.stringify({ event: 'heartbeat' }));
     });
 
     it('should throw error if send fails', () => {

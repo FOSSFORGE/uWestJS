@@ -14,12 +14,14 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   TEmitData
 > {
   private _id: string;
-  private _data: TData = {} as TData;
+  private _data!: TData; // Use definite assignment assertion - data should be set by user
   private nativeSocket: uWS.WebSocket<WebSocketClient>;
 
   constructor(id: string, nativeSocket: uWS.WebSocket<WebSocketClient>) {
     this._id = id;
     this.nativeSocket = nativeSocket;
+    // Initialize data as empty object for backward compatibility
+    this._data = {} as TData;
   }
 
   /**
@@ -32,6 +34,7 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   /**
    * Get/set custom data attached to this socket
    * Use this to store user information, session data, etc.
+   * Note: This property is initially undefined and should be set by the application
    */
   get data(): TData {
     return this._data;
@@ -44,23 +47,28 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
   /**
    * Emit an event to this specific client
    * @param event - Event name
-   * @param data - Data to send
+   * @param data - Optional data to send
    * @example
    * ```typescript
    * socket.emit('message', { text: 'Hello!' });
    * socket.emit('notification', { type: 'info', message: 'Welcome' });
+   * socket.emit('heartbeat'); // No data needed
    * ```
    */
-  emit(event: string, data: TEmitData): void {
+  emit(event: string, data?: TEmitData): void {
     const message = this.serializeMessage(event, data);
+    let result: number;
     try {
-      const result = this.nativeSocket.send(message);
-      // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
-      if (result === 2) {
-        throw new Error(`Message dropped due to backpressure for event "${event}"`);
-      }
+      result = this.nativeSocket.send(message);
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`);
+      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`, {
+        cause: error,
+      });
+    }
+
+    // uWebSockets.js send() returns: 0 (success), 1 (backpressure), 2 (dropped)
+    if (result === 2) {
+      throw new Error(`Message dropped due to backpressure for event "${event}"`);
     }
   }
 
@@ -76,7 +84,9 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
     try {
       this.nativeSocket.close();
     } catch (error) {
-      throw new Error(`Failed to disconnect socket ${this._id}: ${formatError(error)}`);
+      throw new Error(`Failed to disconnect socket ${this._id}: ${formatError(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -167,11 +177,13 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
    * Serialize event and data to JSON string
    * @private
    */
-  private serializeMessage(event: string, data: TEmitData): string {
+  private serializeMessage(event: string, data?: TEmitData): string {
     try {
       return JSON.stringify({ event, data });
     } catch (error) {
-      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`);
+      throw new Error(`Failed to emit event "${event}": ${formatError(error)}`, {
+        cause: error,
+      });
     }
   }
 }

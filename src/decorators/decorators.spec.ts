@@ -71,7 +71,7 @@ describe('Parameter Decorators', () => {
 
   describe('@MessageBody', () => {
     it('should store parameter metadata', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMessageBody');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBody');
 
       expect(metadata).toHaveLength(1);
       expect(metadata[0]).toEqual({
@@ -82,7 +82,7 @@ describe('Parameter Decorators', () => {
     });
 
     it('should store property name when provided', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMessageBodyProperty');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMessageBodyProperty');
 
       expect(metadata).toHaveLength(1);
       expect(metadata[0]).toEqual({
@@ -93,7 +93,7 @@ describe('Parameter Decorators', () => {
     });
 
     it('should store correct parameter index', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMultiple');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMultiple');
       const messageBodyParam = metadata.find((m) => m.type === ParamType.MESSAGE_BODY);
 
       expect(messageBodyParam?.index).toBe(1);
@@ -102,7 +102,7 @@ describe('Parameter Decorators', () => {
 
   describe('@ConnectedSocket', () => {
     it('should store parameter metadata', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithSocket');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithSocket');
 
       expect(metadata).toHaveLength(1);
       expect(metadata[0]).toEqual({
@@ -112,7 +112,7 @@ describe('Parameter Decorators', () => {
     });
 
     it('should store correct parameter index', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMultiple');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMultiple');
       const socketParam = metadata.find((m) => m.type === ParamType.CONNECTED_SOCKET);
 
       expect(socketParam?.index).toBe(0);
@@ -121,7 +121,7 @@ describe('Parameter Decorators', () => {
 
   describe('@Payload', () => {
     it('should store parameter metadata', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithPayload');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithPayload');
 
       expect(metadata).toHaveLength(1);
       expect(metadata[0]).toEqual({
@@ -132,7 +132,7 @@ describe('Parameter Decorators', () => {
     });
 
     it('should store property name when provided', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithPayloadProperty');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithPayloadProperty');
 
       expect(metadata).toHaveLength(1);
       expect(metadata[0]).toEqual({
@@ -145,12 +145,12 @@ describe('Parameter Decorators', () => {
 
   describe('Multiple decorators', () => {
     it('should store metadata for all decorated parameters', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMultiple');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMultiple');
       expect(metadata).toHaveLength(2);
     });
 
     it('should store metadata for mixed decorators', () => {
-      const metadata = getParamMetadata(TestGateway, 'handleWithMixed');
+      const metadata = getParamMetadata(TestGateway.prototype, 'handleWithMixed');
 
       expect(metadata).toHaveLength(3);
 

@@ -7,9 +7,10 @@ export interface CorsOptions {
   /**
    * Allowed origins
    * Can be a string, array of strings, or a function that returns boolean
+   * Note: The origin parameter can be null in privacy-sensitive contexts (sandboxed iframes, local files)
    * @example '*' | 'https://example.com' | ['https://example.com', 'https://app.example.com']
    */
-  origin?: string | string[] | ((origin: string) => boolean);
+  origin?: string | string[] | ((origin: string | null) => boolean);
 
   /**
    * Allow credentials (cookies, authorization headers, TLS client certificates)

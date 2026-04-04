@@ -16,6 +16,10 @@ class TestGateway {
     return 'pong';
   }
 
+  handleError() {
+    return 'error';
+  }
+
   helperMethod() {
     return 'helper';
   }
@@ -25,7 +29,7 @@ describe('MetadataScanner', () => {
   let scanner: MetadataScanner;
   let gateway: TestGateway;
 
-  const addMetadata = (methodName: keyof TestGateway, message: string | number) => {
+  const addMetadata = (methodName: keyof TestGateway, message: unknown) => {
     Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, message, TestGateway.prototype[methodName]);
   };
 
@@ -34,6 +38,7 @@ describe('MetadataScanner', () => {
       'handleMessage',
       'handleChat',
       'handlePing',
+      'handleError',
       'helperMethod',
     ];
     methods.forEach((method) => {
@@ -45,10 +50,6 @@ describe('MetadataScanner', () => {
     scanner = new MetadataScanner();
     gateway = new TestGateway();
     clearAllMetadata();
-  });
-
-  afterEach(() => {
-    scanner.clearCache();
   });
 
   describe('scanForMessageHandlers', () => {
@@ -122,31 +123,51 @@ describe('MetadataScanner', () => {
     it('should return cached results for same instance', () => {
       addMetadata('handleMessage', 'message');
 
-      scanner.scanForMessageHandlers(gateway);
-
-      expect(scanner.getCacheSize()).toBe(1);
-    });
-
-    it('should clear cache', () => {
-      addMetadata('handleMessage', 'message');
-
-      scanner.scanForMessageHandlers(gateway);
-      scanner.clearCache();
-
-      expect(scanner.getCacheSize()).toBe(0);
-    });
-
-    it('should scan again after cache clear', () => {
-      addMetadata('handleMessage', 'message');
-
       const firstScan = scanner.scanForMessageHandlers(gateway);
-      scanner.clearCache();
       const secondScan = scanner.scanForMessageHandlers(gateway);
 
-      expect(firstScan).not.toBe(secondScan);
-      expect(firstScan.length).toBe(secondScan.length);
-      expect(firstScan[0].message).toBe(secondScan[0].message);
-      expect(firstScan[0].methodName).toBe(secondScan[0].methodName);
+      // Verify caching by checking that the same array reference is returned
+      expect(firstScan).toBe(secondScan);
+    });
+
+    it('should not share cache between different instances', () => {
+      addMetadata('handleMessage', 'message');
+
+      const gateway1 = new TestGateway();
+      const gateway2 = new TestGateway();
+
+      const scan1 = scanner.scanForMessageHandlers(gateway1);
+      const scan2 = scanner.scanForMessageHandlers(gateway2);
+
+      // Different instances should have different cached results
+      expect(scan1).not.toBe(scan2);
+      expect(scan1.length).toBe(scan2.length);
+    });
+  });
+
+  describe('getMethodNameForEvent', () => {
+    it('should return method name for existing event', () => {
+      addMetadata('handleMessage', 'message');
+      addMetadata('handleChat', 'chat');
+
+      scanner.scanForMessageHandlers(gateway);
+
+      expect(scanner.getMethodNameForEvent(gateway, 'message')).toBe('handleMessage');
+      expect(scanner.getMethodNameForEvent(gateway, 'chat')).toBe('handleChat');
+    });
+
+    it('should return null for non-existent event', () => {
+      addMetadata('handleMessage', 'message');
+
+      scanner.scanForMessageHandlers(gateway);
+
+      expect(scanner.getMethodNameForEvent(gateway, 'unknown')).toBeNull();
+    });
+
+    it('should return null for uncached instance', () => {
+      const uncachedGateway = new TestGateway();
+
+      expect(scanner.getMethodNameForEvent(uncachedGateway, 'message')).toBeNull();
     });
   });
 
@@ -159,20 +180,42 @@ describe('MetadataScanner', () => {
     });
 
     it('should skip constructor', () => {
-      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'constructor', TestGateway.prototype);
+      // Add metadata to a regular method to ensure scanner runs
+      addMetadata('handleMessage', 'message');
+
+      // Try to add metadata to the constructor (this shouldn't be picked up)
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'test', TestGateway.prototype.constructor);
 
       const handlers = scanner.scanForMessageHandlers(gateway);
 
+      // Should only find the handleMessage handler, not the constructor
+      expect(handlers).toHaveLength(1);
       expect(handlers.map((h) => h.methodName)).not.toContain('constructor');
+      expect(handlers[0].methodName).toBe('handleMessage');
     });
 
-    it('should handle numeric message patterns', () => {
-      addMetadata('handleMessage', 123);
+    it('should skip handlers with invalid message pattern types', () => {
+      addMetadata('handleMessage', 'valid-string');
+      addMetadata('handleChat', 123); // Invalid: number
+      addMetadata('handlePing', ['array']); // Invalid: array
+      addMetadata('handleError', null); // Invalid: null
+
+      const handlers = scanner.scanForMessageHandlers(gateway);
+
+      // Should only find the valid string handler
+      expect(handlers).toHaveLength(1);
+      expect(handlers[0].methodName).toBe('handleMessage');
+      expect(handlers[0].message).toBe('valid-string');
+    });
+
+    it('should accept object message patterns', () => {
+      const objectPattern = { cmd: 'test', version: 1 };
+      addMetadata('handleMessage', objectPattern);
 
       const handlers = scanner.scanForMessageHandlers(gateway);
 
       expect(handlers).toHaveLength(1);
-      expect(handlers[0].message).toBe(123);
+      expect(handlers[0].message).toEqual(objectPattern);
     });
 
     it('should handle empty string message patterns', () => {
@@ -182,6 +225,114 @@ describe('MetadataScanner', () => {
 
       expect(handlers).toHaveLength(1);
       expect(handlers[0].message).toBe('');
+    });
+  });
+
+  describe('inheritance support', () => {
+    class BaseGateway {
+      handleBase() {
+        return 'base handled';
+      }
+
+      handleShared() {
+        return 'base shared';
+      }
+    }
+
+    class ChildGateway extends BaseGateway {
+      handleChild() {
+        return 'child handled';
+      }
+
+      // Override parent method
+      handleShared() {
+        return 'child shared';
+      }
+    }
+
+    // Clean up metadata before each test
+    beforeEach(() => {
+      // Clear metadata from all methods
+      [BaseGateway.prototype.handleBase, BaseGateway.prototype.handleShared].forEach((method) => {
+        Reflect.deleteMetadata(MESSAGE_MAPPING_METADATA, method);
+      });
+      [ChildGateway.prototype.handleChild, ChildGateway.prototype.handleShared].forEach(
+        (method) => {
+          Reflect.deleteMetadata(MESSAGE_MAPPING_METADATA, method);
+        }
+      );
+    });
+
+    it('should discover handlers from parent classes', () => {
+      // Add metadata to base class method
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
+      // Add metadata to child class method
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'child', ChildGateway.prototype.handleChild);
+
+      const childGateway = new ChildGateway();
+      const handlers = scanner.scanForMessageHandlers(childGateway);
+
+      expect(handlers).toHaveLength(2);
+      expect(handlers.map((h) => h.message)).toContain('base');
+      expect(handlers.map((h) => h.message)).toContain('child');
+    });
+
+    it('should bind inherited methods to child instance', () => {
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
+
+      const childGateway = new ChildGateway();
+      const handlers = scanner.scanForMessageHandlers(childGateway);
+
+      const baseHandler = handlers.find((h) => h.message === 'base');
+      expect(baseHandler).toBeDefined();
+      expect(baseHandler!.callback()).toBe('base handled');
+    });
+
+    it('should handle method overrides correctly', () => {
+      // Add metadata to the overridden method in child class
+      Reflect.defineMetadata(
+        MESSAGE_MAPPING_METADATA,
+        'shared',
+        ChildGateway.prototype.handleShared
+      );
+
+      const childGateway = new ChildGateway();
+      const handlers = scanner.scanForMessageHandlers(childGateway);
+
+      const sharedHandler = handlers.find((h) => h.message === 'shared');
+      expect(sharedHandler).toBeDefined();
+      // Should call the child's version, not the parent's
+      expect(sharedHandler!.callback()).toBe('child shared');
+    });
+
+    it('should not duplicate methods from inheritance chain', () => {
+      // Only add metadata to base and child methods, not the shared one
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'child', ChildGateway.prototype.handleChild);
+
+      const childGateway = new ChildGateway();
+      const handlers = scanner.scanForMessageHandlers(childGateway);
+
+      // Should have exactly 2 handlers (base + child), no duplicates
+      expect(handlers).toHaveLength(2);
+      const methodNames = handlers.map((h) => h.methodName);
+      // Verify no duplicate method names using Set
+      expect(new Set(methodNames).size).toBe(methodNames.length);
+      expect(methodNames).toContain('handleBase');
+      expect(methodNames).toContain('handleChild');
+    });
+
+    it('should use Set to prevent duplicate method names from prototype chain', () => {
+      // This test verifies that even if a method appears in multiple prototypes,
+      // it only appears once in the final handler list
+      Reflect.defineMetadata(MESSAGE_MAPPING_METADATA, 'base', BaseGateway.prototype.handleBase);
+
+      const childGateway = new ChildGateway();
+      const handlers = scanner.scanForMessageHandlers(childGateway);
+
+      // handleBase should only appear once even though it's in the prototype chain
+      const baseHandlers = handlers.filter((h) => h.methodName === 'handleBase');
+      expect(baseHandlers).toHaveLength(1);
     });
   });
 });

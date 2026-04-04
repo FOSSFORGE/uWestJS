@@ -118,17 +118,18 @@ export class UwsAdapter implements WebSocketAdapter {
           const data = Buffer.from(message).toString('utf-8');
 
           try {
-            // First, try custom handler if registered
+            // Use custom handler if registered, otherwise use decorator-based routing
+            // This prevents double-processing of messages
             if (this.wsHandler) {
               this.wsHandler.handleMessage(extWs, data);
+            } else {
+              // Use decorator-based routing when no custom handler is set
+              this.handleDecoratorBasedMessage(extWs, data).catch((error) => {
+                this.logger.error(
+                  `Decorator routing error for client ${extWs.id}: ${this.formatError(error)}`
+                );
+              });
             }
-
-            // Then, try decorator-based routing
-            this.handleDecoratorBasedMessage(extWs, data).catch((error) => {
-              this.logger.error(
-                `Decorator routing error for client ${extWs.id}: ${this.formatError(error)}`
-              );
-            });
           } catch (error) {
             this.logger.error(
               `Message handler error for client ${extWs.id}: ${this.formatError(error)}`
@@ -185,20 +186,20 @@ export class UwsAdapter implements WebSocketAdapter {
    * @param transform - Transform function (not used in this implementation)
    */
   bindMessageHandlers(
-    client: unknown,
+    gateway: unknown,
     _handlers: MessageMappingProperties[],
     _transform: (data: unknown) => Observable<unknown>
   ): void {
-    if (!client || typeof client !== 'object') {
+    if (!gateway || typeof gateway !== 'object') {
       this.logger.warn('Invalid gateway instance provided to bindMessageHandlers');
       return;
     }
 
     // Store gateway instance for later use
-    this.gatewayInstance = client;
+    this.gatewayInstance = gateway;
 
     // Scan gateway for @SubscribeMessage decorators
-    const handlers = this.metadataScanner.scanForMessageHandlers(client);
+    const handlers = this.metadataScanner.scanForMessageHandlers(gateway);
 
     if (handlers.length === 0) {
       this.logger.debug('No @SubscribeMessage handlers found in gateway');
@@ -375,11 +376,6 @@ export class UwsAdapter implements WebSocketAdapter {
         return;
       }
 
-      // Get the handler
-      const handlers = this.messageRouter.getPatterns();
-      const handlerIndex = handlers.indexOf(parsedMessage.event);
-      if (handlerIndex === -1) return;
-
       // Find the method name for this event
       const methodName = this.findMethodNameForEvent(parsedMessage.event);
       if (!methodName) {
@@ -418,18 +414,8 @@ export class UwsAdapter implements WebSocketAdapter {
    * This is a helper to map event names back to method names
    */
   private findMethodNameForEvent(event: string): string | null {
-    // Scan the gateway instance for the method with this event
     if (!this.gatewayInstance) return null;
-
-    const handlers = (
-      this.metadataScanner as unknown as {
-        cache: Map<object, Array<{ message: string; methodName: string }>>;
-      }
-    ).cache.get(this.gatewayInstance);
-    if (!handlers) return null;
-
-    const handler = handlers.find((h) => h.message === event);
-    return handler ? handler.methodName : null;
+    return this.metadataScanner.getMethodNameForEvent(this.gatewayInstance, event);
   }
 
   /**

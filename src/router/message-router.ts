@@ -7,8 +7,9 @@ import { MessageHandler } from './metadata-scanner';
 export interface IncomingMessage {
   /**
    * The event/message type
+   * Supports both string events and object patterns
    */
-  event: string;
+  event: string | Record<string, unknown>;
 
   /**
    * The message payload/data
@@ -46,17 +47,19 @@ export class MessageRouter {
   /**
    * Registers message handlers from the routing table
    * @param handlers - Array of message handlers to register
+   *
+   * Note: Duplicate handlers are overwritten with a warning.
    */
   registerHandlers(handlers: MessageHandler[]): void {
     for (const handler of handlers) {
-      if (this.handlers.has(handler.message)) {
-        this.logger.warn(
-          `Duplicate handler for message '${handler.message}', overwriting previous handler`
-        );
+      const key = this.getHandlerKey(handler.message);
+
+      if (this.handlers.has(key)) {
+        this.logger.warn(`Duplicate handler for message '${key}', overwriting previous handler`);
       }
 
-      this.handlers.set(handler.message, handler);
-      this.logger.debug(`Registered handler: ${handler.message} -> ${handler.methodName}`);
+      this.handlers.set(key, handler);
+      this.logger.debug(`Registered handler: ${key} -> ${handler.methodName}`);
     }
 
     this.logger.log(`Registered ${handlers.length} message handlers`);
@@ -69,22 +72,24 @@ export class MessageRouter {
    * @returns Promise resolving to the routing result
    */
   async route(message: IncomingMessage, client: unknown): Promise<RoutingResult> {
-    const handler = this.handlers.get(message.event);
+    const handler = this.findHandler(message.event);
 
     if (!handler) {
-      this.logger.debug(`No handler found for message: ${message.event}`);
+      this.logger.debug(`No handler found for message: ${JSON.stringify(message.event)}`);
       return { handled: false };
     }
 
     try {
-      this.logger.debug(`Routing message '${message.event}' to ${handler.methodName}`);
+      this.logger.debug(
+        `Routing message '${JSON.stringify(message.event)}' to ${handler.methodName}`
+      );
 
       const result = await handler.callback(client, message.data);
 
       return { handled: true, response: result };
     } catch (error) {
       this.logger.error(
-        `Error executing handler for '${message.event}': ${this.formatError(error)}`
+        `Error executing handler for '${JSON.stringify(message.event)}': ${this.formatError(error)}`
       );
 
       return { handled: true, error: this.toError(error) };
@@ -96,8 +101,9 @@ export class MessageRouter {
    * @param pattern - The message pattern to check
    * @returns True if a handler exists
    */
-  hasHandler(pattern: string): boolean {
-    return this.handlers.has(pattern);
+  hasHandler(pattern: string | Record<string, unknown>): boolean {
+    const key = this.getHandlerKey(pattern);
+    return this.handlers.has(key);
   }
 
   /**
@@ -121,6 +127,28 @@ export class MessageRouter {
    */
   getHandlerCount(): number {
     return this.handlers.size;
+  }
+
+  /**
+   * Finds a handler for the given event
+   * Supports both string and object pattern matching
+   * @private
+   */
+  private findHandler(event: string | Record<string, unknown>): MessageHandler | undefined {
+    const key = this.getHandlerKey(event);
+    return this.handlers.get(key);
+  }
+
+  /**
+   * Converts a message pattern to a consistent string key for storage
+   * @private
+   */
+  private getHandlerKey(pattern: string | Record<string, unknown>): string {
+    if (typeof pattern === 'string') {
+      return pattern;
+    }
+    // For object patterns, create a stable JSON string key
+    return JSON.stringify(pattern, Object.keys(pattern).sort());
   }
 
   /**

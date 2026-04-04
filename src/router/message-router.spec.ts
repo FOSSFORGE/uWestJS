@@ -7,9 +7,9 @@ describe('MessageRouter', () => {
   const mockData = { message: 'hello' };
 
   const createHandler = (
-    message: string,
+    message: string | Record<string, unknown>,
     callback: (client?: unknown, data?: unknown) => unknown,
-    methodName = `handle${message}`
+    methodName = `handle${typeof message === 'string' ? message : 'Pattern'}`
   ): MessageHandler => ({
     message,
     methodName,
@@ -18,10 +18,6 @@ describe('MessageRouter', () => {
 
   beforeEach(() => {
     router = new MessageRouter();
-  });
-
-  afterEach(() => {
-    router.clear();
   });
 
   describe('registerHandlers', () => {
@@ -47,11 +43,15 @@ describe('MessageRouter', () => {
       expect(router.getPatterns()).toEqual(['message1', 'message2', 'message3']);
     });
 
-    it('should overwrite duplicate handlers', () => {
+    it('should overwrite duplicate handlers', async () => {
       router.registerHandlers([createHandler('test', () => 'first', 'handler1')]);
       router.registerHandlers([createHandler('test', () => 'second', 'handler2')]);
 
       expect(router.getHandlerCount()).toBe(1);
+
+      // Verify the second handler replaced the first
+      const result = await router.route({ event: 'test' }, {});
+      expect(result.response).toBe('second');
     });
 
     it('should handle empty handler array', () => {
@@ -127,6 +127,33 @@ describe('MessageRouter', () => {
       expect(result).toEqual({
         handled: false,
         response: undefined,
+        error: undefined,
+      });
+    });
+
+    it('should handle object pattern events', async () => {
+      const pattern = { cmd: 'get-user', version: 1 };
+      router.registerHandlers([createHandler(pattern, () => 'user data')]);
+
+      const result = await router.route({ event: pattern }, {});
+
+      expect(result).toEqual({
+        handled: true,
+        response: 'user data',
+        error: undefined,
+      });
+    });
+
+    it('should match object patterns with same keys in different order', async () => {
+      const pattern = { cmd: 'test', id: 123 };
+      router.registerHandlers([createHandler(pattern, () => 'matched')]);
+
+      // Same pattern but keys in different order
+      const result = await router.route({ event: { id: 123, cmd: 'test' } }, {});
+
+      expect(result).toEqual({
+        handled: true,
+        response: 'matched',
         error: undefined,
       });
     });
