@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Security
 
+## [1.0.1] - 2026-04-06
+
+### Changed
+- Updated uWebSockets.js dependency from v20.48.0 to v20.60.0
+- Added Node.js 24 and 25 support
+- Updated devDependencies to latest versions
+- Include Jest tyoes in tsconfig.json
+
+### Note
+- Supported Node.js versions: 20, 22, 24, 25
+- If you experience installation or runtime issues, run `npm cache clean --force` before installing
+
 ## [1.0.0] - 2026-04-05
 
 ### Added
@@ -70,5 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exception handling with WsException class
 - Broadcast operator with room targeting and client exclusion
 
-[Unreleased]: https://github.com/VikramAditya33/uWestJs/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/VikramAditya33/uWestJs/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/VikramAditya33/uWestJs/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VikramAditya33/uWestJs/releases/tag/v1.0.0
