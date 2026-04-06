@@ -65,7 +65,7 @@
     "rxjs": "^7.0.0"
   },
   "dependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.60.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.61.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
