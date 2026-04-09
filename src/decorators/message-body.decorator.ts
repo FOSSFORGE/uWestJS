@@ -1,13 +1,10 @@
 import 'reflect-metadata';
-import {
-  ParamType,
-  createParamDecorator,
-  PARAM_ARGS_METADATA,
-  ParamMetadata,
-} from './param-decorator.utils';
+import { ParamType, createParamDecorator, PARAM_ARGS_METADATA } from './param-decorator.utils';
+import type { ParamMetadata } from './param-decorator.utils';
 
 // Re-export for backward compatibility
-export { PARAM_ARGS_METADATA, ParamType, ParamMetadata };
+export { PARAM_ARGS_METADATA, ParamType };
+export type { ParamMetadata };
 
 /**
  * Decorator that injects the message body/data into a handler parameter
