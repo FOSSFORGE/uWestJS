@@ -3,15 +3,19 @@ import { ModuleRef } from '../middleware/module-ref';
 
 /**
  * CORS configuration options
+ * Supports both HTTP and WebSocket CORS
  */
 export interface CorsOptions {
   /**
    * Allowed origins
-   * Can be a string, array of strings, or a function that returns boolean
+   * - string: single origin (e.g., 'https://example.com')
+   * - string[]: multiple origins
+   * - boolean: true = allow all (*), false = deny all
+   * - function: dynamic origin validation
    * Note: The origin parameter can be null in privacy-sensitive contexts (sandboxed iframes, local files)
    * @example '*' | 'https://example.com' | ['https://example.com', 'https://app.example.com']
    */
-  origin?: string | string[] | ((origin: string | null) => boolean);
+  origin?: string | string[] | boolean | ((origin: string | null) => boolean);
 
   /**
    * Allow credentials (cookies, authorization headers, TLS client certificates)
@@ -21,7 +25,9 @@ export interface CorsOptions {
 
   /**
    * Allowed HTTP methods for CORS preflight
-   * @default ['GET', 'POST']
+   * Supports standard methods (GET, POST, etc.) and extension methods (WebDAV, etc.)
+   * @default ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'] for HTTP
+   * @default ['GET', 'POST'] for WebSocket
    */
   methods?: string | string[];
 

@@ -5,7 +5,7 @@
 
 // Re-export NestJS decorators for convenience
 export { SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
-export { OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
+export type { OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 
 // Custom parameter decorators
 export { MessageBody } from './message-body.decorator';
