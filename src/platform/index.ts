@@ -10,8 +10,8 @@
 export * from './uws-request';
 export * from './uws-response';
 
-// Body parser will be exported here in Phase 1
-// export * from './body-parser';
+// Body parser (Phase 2 Task 2.1) (done)
+export * from './body-parser';
 
 // Route registry will be exported here in Phase 2
 // export * from './route-registry';

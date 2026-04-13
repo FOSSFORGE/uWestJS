@@ -19,7 +19,7 @@ describe('UwsResponse', () => {
       writeStatus: jest.fn(),
       writeHeader: jest.fn(),
       end: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<HttpResponse>;
   });
 
   describe('constructor', () => {
@@ -232,6 +232,7 @@ describe('UwsResponse', () => {
       const cookieCall = (mockUwsRes.writeHeader as jest.Mock).mock.calls.find(
         (call) => call[0] === 'set-cookie'
       );
+      expect(cookieCall).toBeDefined();
       expect(cookieCall[1]).toContain('session=abc123');
       expect(cookieCall[1]).toContain('Path=/api');
       expect(cookieCall[1]).toContain('HttpOnly');
@@ -244,6 +245,7 @@ describe('UwsResponse', () => {
       const cookieCall = (mockUwsRes.writeHeader as jest.Mock).mock.calls.find(
         (call) => call[0] === 'set-cookie'
       );
+      expect(cookieCall).toBeDefined();
       expect(cookieCall[1]).toContain('session=abc123.');
       expect(cookieCall[1]).toMatch(/session=abc123\.[a-zA-Z0-9_-]+/);
     });

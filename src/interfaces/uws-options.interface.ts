@@ -13,7 +13,7 @@ export interface CorsOptions {
    * - boolean: true = allow all (*), false = deny all
    * - function: dynamic origin validation
    * Note: The origin parameter can be null in privacy-sensitive contexts (sandboxed iframes, local files)
-   * @example '*' | 'https://example.com' | ['https://example.com', 'https://app.example.com']
+   * @example '*' | 'https://example.com' | ['https://example.com', 'https://app.example.com'] | true | false
    */
   origin?: string | string[] | boolean | ((origin: string | null) => boolean);
 
@@ -25,9 +25,14 @@ export interface CorsOptions {
 
   /**
    * Allowed HTTP methods for CORS preflight
-   * Supports standard methods (GET, POST, etc.) and extension methods (WebDAV, etc.)
-   * @default ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'] for HTTP
-   * @default ['GET', 'POST'] for WebSocket
+   *
+   * When not specified, the platform adapter applies context-appropriate defaults:
+   * - HTTP context: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE']
+   * - WebSocket context: ['GET', 'POST']
+   *
+   * Explicitly setting this field overrides the default for all contexts.
+   *
+   * @default Context-dependent (see above)
    */
   methods?: string | string[];
 

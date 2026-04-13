@@ -1,4 +1,5 @@
 import type { HttpRequest, HttpResponse } from 'uWebSockets.js';
+import { BodyParser } from './body-parser';
 
 /**
  * Headers that should NOT be duplicated per HTTP spec
@@ -34,6 +35,11 @@ const DISCARDED_DUPLICATES = new Set([
  *
  * This implementation uses lazy evaluation for headers and query parameters to optimize performance.
  * Headers are only parsed when first accessed, and the parsed result is cached for subsequent access.
+ *
+ * **Body Parsing**: Unlike Express where req.body is synchronous (populated by middleware),
+ * body parsing methods (buffer(), json(), text(), urlencoded()) return Promises because
+ * uWebSockets.js streams body data asynchronously. The body getter also returns a Promise.
+ * In NestJS applications, use parameter decorators (@Body(), @Req()) instead of direct access.
  */
 export class UwsRequest {
   // Core properties (cached from stack-allocated uWS request)
@@ -54,6 +60,18 @@ export class UwsRequest {
   // Reference to response (for body parsing later)
   private readonly uwsRes: HttpResponse;
 
+  // Body parsing
+  private bodyParser?: BodyParser;
+  private cachedBody?: Buffer;
+  private cachedJson?: unknown;
+  private cachedText?: string;
+  private cachedUrlencoded?: Record<string, unknown>;
+
+  // Promise caching for body parsing
+  private bufferPromise?: Promise<Buffer>;
+  private jsonPromise?: Promise<unknown>;
+  private textPromise?: Promise<string>;
+  private urlencodedPromise?: Promise<Record<string, unknown>>;
   /**
    * Creates a new UwsRequest instance
    *
@@ -201,6 +219,9 @@ export class UwsRequest {
   /**
    * Parse query string into object
    *
+   * Used for both URL query parameters and application/x-www-form-urlencoded body data.
+   * Provides consistent parsing behavior across the class.
+   *
    * Handles edge cases:
    * - Values containing '=' (e.g., key=val=ue → {key: 'val=ue'})
    * - Malformed URI encoding (e.g., %ZZ → uses raw value)
@@ -226,15 +247,16 @@ export class UwsRequest {
       if (!key) continue;
 
       // Decode with error handling for malformed URI encoding
+      // Note: Replace + with space before decoding (application/x-www-form-urlencoded standard)
       let decodedKey: string;
       let decodedValue: string;
       try {
-        decodedKey = decodeURIComponent(key);
-        decodedValue = value ? decodeURIComponent(value) : '';
+        decodedKey = decodeURIComponent(key.replace(/\+/g, ' '));
+        decodedValue = value ? decodeURIComponent(value.replace(/\+/g, ' ')) : '';
       } catch {
-        // Malformed URI encoding - use raw values
-        decodedKey = key;
-        decodedValue = value || '';
+        // Malformed URI encoding - use raw values (still replace + with space)
+        decodedKey = key.replace(/\+/g, ' ');
+        decodedValue = value ? value.replace(/\+/g, ' ') : '';
       }
 
       // Handle array parameters (key[]=value or key=value1&key=value2)
@@ -275,14 +297,217 @@ export class UwsRequest {
   /**
    * Check if request is for a specific content type
    *
-   * @param type - MIME type to check
+   * Supports multiple matching patterns:
+   * - Full MIME type: is('application/json')
+   * - Subtype only: is('json') matches 'application/json'
+   * - Type prefix: is('text') matches 'text/plain', 'text/html', etc.
+   *
+   * @param type - MIME type or pattern to check
    * @returns true if content-type matches
    */
   is(type: string): boolean {
     const ct = this.contentType;
     if (!ct) return false;
 
-    // Simple type matching (can be enhanced later)
-    return ct.toLowerCase().includes(type.toLowerCase());
+    // Strip charset and parameters (e.g., "application/json; charset=utf-8" -> "application/json")
+    const normalizedCt = ct.toLowerCase().split(';')[0].trim();
+    const normalizedType = type.toLowerCase().trim();
+
+    // Exact match (e.g., is('application/json'))
+    if (normalizedCt === normalizedType) {
+      return true;
+    }
+
+    // Subtype match (e.g., is('json') matches 'application/json')
+    if (normalizedCt.endsWith('/' + normalizedType)) {
+      return true;
+    }
+
+    // Type prefix match (e.g., is('text') matches 'text/plain', 'text/html')
+    if (normalizedCt.startsWith(normalizedType + '/')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Initialize body parser (called by platform adapter)
+   *
+   * This must be called synchronously during request handling setup,
+   * before any async operations, to ensure the onData handler is registered.
+   *
+   * @param maxBodySize - Maximum body size in bytes
+   * @internal
+   */
+  _initBodyParser(maxBodySize: number): void {
+    this.bodyParser = new BodyParser(this.uwsRes, this.headers, maxBodySize);
+  }
+
+  /**
+   * Get raw body as Buffer
+   *
+   * This method buffers the entire request body into memory.
+   * For large bodies, consider using streaming instead (future implementation).
+   *
+   * @returns Promise that resolves with the complete body buffer
+   */
+  async buffer(): Promise<Buffer> {
+    // Return cached result if available
+    if (this.cachedBody) {
+      return this.cachedBody;
+    }
+
+    // Return existing promise if buffer() was already called
+    if (this.bufferPromise) {
+      return this.bufferPromise;
+    }
+
+    // No body parser initialized - return empty buffer
+    if (!this.bodyParser) {
+      return Buffer.alloc(0);
+    }
+
+    // Create and cache the promise
+    this.bufferPromise = this.bodyParser.buffer().then((buffer) => {
+      this.cachedBody = buffer;
+      return buffer;
+    });
+
+    return this.bufferPromise;
+  }
+
+  /**
+   * Parse body as JSON
+   *
+   * Caches the parsed result for subsequent calls.
+   *
+   * @returns Promise that resolves with the parsed JSON object
+   * @throws Error if body is not valid JSON
+   */
+  async json<T = unknown>(): Promise<T> {
+    // Return cached result if available
+    if (this.cachedJson !== undefined) {
+      return this.cachedJson as T;
+    }
+
+    // Return existing promise if json() was already called
+    if (this.jsonPromise) {
+      return this.jsonPromise as Promise<T>;
+    }
+
+    // Create and cache the promise
+    this.jsonPromise = this.buffer().then((buffer) => {
+      const text = buffer.toString('utf-8');
+
+      try {
+        this.cachedJson = JSON.parse(text) as T;
+      } catch (e) {
+        throw new Error(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`, {
+          cause: e,
+        });
+      }
+
+      return this.cachedJson as T;
+    });
+
+    return this.jsonPromise as Promise<T>;
+  }
+
+  /**
+   * Parse body as text
+   *
+   * Caches the result for subsequent calls.
+   *
+   * @returns Promise that resolves with the body as UTF-8 string
+   */
+  async text(): Promise<string> {
+    // Return cached result if available
+    if (this.cachedText !== undefined) {
+      return this.cachedText;
+    }
+
+    // Return existing promise if text() was already called
+    if (this.textPromise) {
+      return this.textPromise;
+    }
+
+    // Create and cache the promise
+    this.textPromise = this.buffer().then((buffer) => {
+      this.cachedText = buffer.toString('utf-8');
+      return this.cachedText;
+    });
+
+    return this.textPromise;
+  }
+
+  /**
+   * Parse body as URL-encoded form data
+   *
+   * Uses the same parser as query parameters for consistent behavior.
+   * Caches the parsed result for subsequent calls.
+   *
+   * @returns Promise that resolves with the parsed form data
+   */
+  async urlencoded(): Promise<Record<string, unknown>> {
+    // Return cached result if available
+    if (this.cachedUrlencoded) {
+      return this.cachedUrlencoded;
+    }
+
+    // Return existing promise if urlencoded() was already called
+    if (this.urlencodedPromise) {
+      return this.urlencodedPromise;
+    }
+
+    // Create and cache the promise
+    this.urlencodedPromise = this.text().then((text) => {
+      // Use the same parser as query parameters for consistency
+      this.cachedUrlencoded = this.parseQuery(text) as Record<string, unknown>;
+      return this.cachedUrlencoded;
+    });
+
+    return this.urlencodedPromise;
+  }
+
+  /**
+   * Get body based on content-type (convenience method)
+   *
+   * **IMPORTANT**: Unlike Express, this returns a Promise because uWebSockets.js
+   * body parsing is inherently async. In NestJS, use the @Body() decorator instead
+   * of accessing this property directly.
+   *
+   * Automatically parses the body based on the Content-Type header:
+   * - application/json → json()
+   * - application/x-www-form-urlencoded → urlencoded()
+   * - text/* → text()
+   * - default → buffer()
+   *
+   * @example
+   * ```typescript
+   * // Must await the promise
+   * const data = await request.body;
+   *
+   * // In NestJS, use decorators instead:
+   * @Post()
+   * create(@Body() data: CreateDto) {
+   *   // data is already parsed
+   * }
+   * ```
+   *
+   * @returns Promise that resolves with the parsed body
+   */
+  get body(): Promise<unknown> {
+    const contentType = this.contentType || '';
+
+    if (contentType.includes('application/json')) {
+      return this.json();
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      return this.urlencoded();
+    } else if (contentType.includes('text/')) {
+      return this.text();
+    } else {
+      return this.buffer();
+    }
   }
 }

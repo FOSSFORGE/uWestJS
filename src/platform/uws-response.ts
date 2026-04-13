@@ -142,7 +142,7 @@ export class UwsResponse {
    * @returns this for chaining
    */
   type(type: string): this {
-    return this.setHeader('content-type', type);
+    return this.setHeader('content-type', type, true);
   }
 
   /**
@@ -248,9 +248,9 @@ export class UwsResponse {
    * - Setting content-type for JSON
    * - Corking all operations
    *
-   * @param body - Response body (string, Buffer, object, or undefined)
+   * @param body - Response body (string, Buffer, object, array, or undefined)
    */
-  send(body?: string | Buffer | Record<string, unknown>): void {
+  send(body?: string | Buffer | Record<string, unknown> | unknown[]): void {
     if (this.aborted) {
       return; // Silently ignore if connection aborted
     }
@@ -312,9 +312,9 @@ export class UwsResponse {
   /**
    * End the response (alias for send)
    *
-   * @param data - Optional response body
+   * @param data - Optional response body (string, Buffer, object, array, or undefined)
    */
-  end(data?: string | Buffer | Record<string, unknown> | undefined): void {
+  end(data?: string | Buffer | Record<string, unknown> | unknown[]): void {
     this.send(data);
   }
 

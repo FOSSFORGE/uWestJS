@@ -4,7 +4,15 @@
 export interface HttpOptions {
   /**
    * Maximum request body size in bytes
+   *
+   * Must be a positive integer. Values <= 0, Infinity, or NaN will cause undefined behavior.
+   *
    * @default 1048576 (1MB)
+   * @example
+   * ```typescript
+   * maxBodySize: 10 * 1024 * 1024  // 10MB
+   * maxBodySize: 100 * 1024        // 100KB
+   * ```
    */
   maxBodySize?: number;
 
