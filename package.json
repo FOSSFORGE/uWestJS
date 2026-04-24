@@ -6,10 +6,6 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist/**/*",
-    "!dist/__mocks__/**",
-    "!dist/**/test-helpers.js",
-    "!dist/**/test-helpers.d.ts",
-    "!dist/**/test-helpers.js.map",
     "README.md",
     "LICENSE"
   ],
@@ -30,6 +26,8 @@
   },
   "keywords": [
     "nestjs",
+    "uwestjs",
+    "http",
     "websocket",
     "uwebsockets",
     "uws",
@@ -39,6 +37,7 @@
     "adapter",
     "gateway",
     "socket.io",
+    "concurrency",
     "ws"
   ],
   "author": "Vikram Aditya",
@@ -69,6 +68,7 @@
   },
   "dependencies": {
     "busboy": "^1.6.0",
+    "compressible": "^2.0.18",
     "content-disposition": "^1.1.0",
     "cookie": "^1.1.1",
     "cookie-signature": "^1.2.2",
@@ -86,6 +86,7 @@
     "@nestjs/testing": "^11.0.0",
     "@nestjs/websockets": "^11.0.0",
     "@types/busboy": "^1.5.4",
+    "@types/compressible": "^2.0.3",
     "@types/content-disposition": "^0.5.8",
     "@types/cookie-signature": "^1.1.2",
     "@types/etag": "^1.8.4",
