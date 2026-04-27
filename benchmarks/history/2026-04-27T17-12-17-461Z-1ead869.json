@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-04-27T17:12:17.461Z",
+  "date": "2026-04-27",
+  "commit": "1ead869",
+  "commitMessage": "Merge pull request #51 from aryan55254/fix/json-gc-pressure\n\nshared frozen constant for empty JSON bodies",
+  "branch": "main",
+  "nodeVersion": "v24.14.1",
+  "platform": "linux",
+  "arch": "x64",
+  "results": [
+    {
+      "scenario": "headers",
+      "express": {
+        "reqPerSec": "27.79k",
+        "throughput": "5.17 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "46.98k",
+        "throughput": "8.78 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "86.23k",
+        "throughput": "13.57 MB/s"
+      },
+      "vsExpress": "**3.10x**",
+      "vsFastify": "**1.84x**"
+    },
+    {
+      "scenario": "hello-world",
+      "express": {
+        "reqPerSec": "29.17k",
+        "throughput": "4.84 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "51.19k",
+        "throughput": "8.59 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "90.12k",
+        "throughput": "8.94 MB/s"
+      },
+      "vsExpress": "**3.09x**",
+      "vsFastify": "**1.76x**"
+    },
+    {
+      "scenario": "json-response",
+      "express": {
+        "reqPerSec": "27.64k",
+        "throughput": "7.54 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "46.46k",
+        "throughput": "12.72 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "79.51k",
+        "throughput": "19.41 MB/s"
+      },
+      "vsExpress": "**2.88x**",
+      "vsFastify": "**1.71x**"
+    },
+    {
+      "scenario": "mixed-response",
+      "express": {
+        "reqPerSec": "27.21k",
+        "throughput": "6.28 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "46.73k",
+        "throughput": "10.83 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "81.39k",
+        "throughput": "16.46 MB/s"
+      },
+      "vsExpress": "**2.99x**",
+      "vsFastify": "**1.74x**"
+    },
+    {
+      "scenario": "post-json",
+      "express": {
+        "reqPerSec": "25.69k",
+        "throughput": "4.75 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "20.20k",
+        "throughput": "5.51 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "46.93k",
+        "throughput": "7.97 MB/s"
+      },
+      "vsExpress": "**1.83x**",
+      "vsFastify": "**2.32x**"
+    },
+    {
+      "scenario": "query-params",
+      "express": {
+        "reqPerSec": "22.69k",
+        "throughput": "5.00 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "38.98k",
+        "throughput": "8.62 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "90.64k",
+        "throughput": "12.19 MB/s"
+      },
+      "vsExpress": "**4.00x**",
+      "vsFastify": "**2.33x**"
+    },
+    {
+      "scenario": "route-params",
+      "express": {
+        "reqPerSec": "26.44k",
+        "throughput": "6.03 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "37.06k",
+        "throughput": "8.48 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "79.12k",
+        "throughput": "15.77 MB/s"
+      },
+      "vsExpress": "**2.99x**",
+      "vsFastify": "**2.13x**"
+    },
+    {
+      "scenario": "static-file",
+      "express": {
+        "reqPerSec": "30.81k",
+        "throughput": "305.79 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "45.50k",
+        "throughput": "450.98 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "68.78k",
+        "throughput": "680.65 MB/s"
+      },
+      "vsExpress": "**2.23x**",
+      "vsFastify": "**1.51x**"
+    }
+  ]
+}
