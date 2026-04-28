@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-04-28T03:06:35.286Z",
+  "date": "2026-04-28",
+  "commit": "2a58709",
+  "commitMessage": "Merge pull request #55 from FOSSFORGE/feat/export-constants-and-auto-wrap-moduleref\n\nfeat: export compression constants and auto-wrap ModuleRef",
+  "branch": "main",
+  "nodeVersion": "v24.14.1",
+  "platform": "linux",
+  "arch": "x64",
+  "results": [
+    {
+      "scenario": "headers",
+      "express": {
+        "reqPerSec": "14.04k",
+        "throughput": "2.61 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "21.13k",
+        "throughput": "3.95 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "45.23k",
+        "throughput": "7.12 MB/s"
+      },
+      "vsExpress": "**3.22x**",
+      "vsFastify": "**2.14x**"
+    },
+    {
+      "scenario": "hello-world",
+      "express": {
+        "reqPerSec": "14.55k",
+        "throughput": "2.41 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "25.16k",
+        "throughput": "4.22 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "60.17k",
+        "throughput": "5.97 MB/s"
+      },
+      "vsExpress": "**4.14x**",
+      "vsFastify": "**2.39x**"
+    },
+    {
+      "scenario": "json-response",
+      "express": {
+        "reqPerSec": "13.57k",
+        "throughput": "3.70 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "19.37k",
+        "throughput": "5.30 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "39.36k",
+        "throughput": "9.61 MB/s"
+      },
+      "vsExpress": "**2.90x**",
+      "vsFastify": "**2.03x**"
+    },
+    {
+      "scenario": "mixed-response",
+      "express": {
+        "reqPerSec": "13.32k",
+        "throughput": "3.07 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "19.69k",
+        "throughput": "4.56 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "45.36k",
+        "throughput": "9.17 MB/s"
+      },
+      "vsExpress": "**3.41x**",
+      "vsFastify": "**2.30x**"
+    },
+    {
+      "scenario": "post-json",
+      "express": {
+        "reqPerSec": "13.20k",
+        "throughput": "2.44 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "12.28k",
+        "throughput": "3.35 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "22.37k",
+        "throughput": "3.80 MB/s"
+      },
+      "vsExpress": "**1.69x**",
+      "vsFastify": "**1.82x**"
+    },
+    {
+      "scenario": "query-params",
+      "express": {
+        "reqPerSec": "11.65k",
+        "throughput": "2.57 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "19.07k",
+        "throughput": "4.22 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "42.72k",
+        "throughput": "5.74 MB/s"
+      },
+      "vsExpress": "**3.67x**",
+      "vsFastify": "**2.24x**"
+    },
+    {
+      "scenario": "route-params",
+      "express": {
+        "reqPerSec": "12.88k",
+        "throughput": "2.94 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "19.51k",
+        "throughput": "4.46 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "37.31k",
+        "throughput": "7.44 MB/s"
+      },
+      "vsExpress": "**2.90x**",
+      "vsFastify": "**1.91x**"
+    },
+    {
+      "scenario": "static-file",
+      "express": {
+        "reqPerSec": "15.79k",
+        "throughput": "156.75 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "19.83k",
+        "throughput": "196.52 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "35.16k",
+        "throughput": "347.99 MB/s"
+      },
+      "vsExpress": "**2.23x**",
+      "vsFastify": "**1.77x**"
+    }
+  ]
+}
