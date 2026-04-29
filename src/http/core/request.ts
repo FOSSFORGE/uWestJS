@@ -372,8 +372,7 @@ export class UwsRequest extends Readable {
     // This handles non-pipe consumers (e.g., for await...of, .read(), etc.)
     if (!this.streamActivated && this.bodyParserMode === 'awaiting') {
       this.activateStreaming();
-      // Note: activateStreaming() overrides this._read, but this call already started
-      // so we need to resume here too
+      // activateStreaming() handles _read override and initial resume
       return;
     }
 
