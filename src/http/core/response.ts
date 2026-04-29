@@ -791,11 +791,9 @@ export class UwsResponse extends Writable {
     this.atomic(() => {
       this.flushChunks();
 
-      // Set content-length header if totalSize provided (before headers are sent)
-      if (totalSize !== undefined && !this._headersSent) {
-        this.setHeader('content-length', totalSize.toString());
-      }
-      // Note: Headers will be sent by streamChunk() on first write
+      // Note: When totalSize is provided, we use tryEnd() which automatically
+      // manages Content-Length header. Don't set it manually to avoid duplicates.
+      // Headers will be sent by streamChunk() on first write
     });
 
     // Register this stream so the constructor's abort handler can destroy it

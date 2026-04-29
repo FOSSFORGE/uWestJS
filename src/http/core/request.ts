@@ -273,7 +273,7 @@ export class UwsRequest extends Readable {
 
           // Pause if we've buffered too much (prevent excessive memory usage)
           if (this.totalReceivedBytes > BUFFER_WATERMARK) {
-            this.pauseStream();
+            this.pause();
           }
           break;
 
@@ -289,7 +289,7 @@ export class UwsRequest extends Readable {
             this.push(null); // Signal end of stream
           } else if (!this.push(buffer)) {
             // Backpressure detected - pause uWS
-            this.pauseStream();
+            this.pause();
           }
           break;
       }
@@ -302,32 +302,36 @@ export class UwsRequest extends Readable {
   }
 
   /**
-   * Flush buffered chunks to the stream, respecting backpressure
-   * @returns true if all chunks were flushed
+   * Flush buffered chunks to the stream
+   *
+   * Pushes all buffered chunks without checking backpressure per chunk.
+   * Node.js Readable stream handles backpressure internally - when the consumer
+   * is slow, it stops calling _read() automatically. We don't need to manually
+   * track partial flushes.
+   *
+   * Note: Since buffered data is capped at BUFFER_WATERMARK (128KB), the temporary
+   * memory overhead from pushing all chunks at once is bounded and acceptable.
+   *
    * @private
    */
-  private flushBufferedChunks(): boolean {
-    let i = 0;
-    for (; i < this.bufferedChunks.length; i++) {
-      if (!this.push(this.bufferedChunks[i])) {
-        // Backpressure detected - stop pushing
-        // Remaining chunks will be pushed when _read() is called
-        i++; // Include current chunk in removal count
-        break;
-      }
+  private flushBufferedChunks(): void {
+    // Push all buffered chunks (ignore backpressure return value)
+    for (const chunk of this.bufferedChunks) {
+      this.push(chunk);
     }
 
-    // Remove pushed chunks from buffer
-    if (i > 0) {
-      this.bufferedChunks.splice(0, i);
-    }
-
-    return this.bufferedChunks.length === 0;
+    // Clear the buffer (no splice needed, just replace with empty array)
+    this.bufferedChunks = [];
   }
 
   /**
    * Activates streaming mode when pipe() or stream methods are called
    * Flushes buffered chunks to the stream
+   *
+   * Implementation strategy:
+   * - Override _read to simply call resume() for optimal performance
+   * - Flush all buffered chunks at once (Node.js handles backpressure)
+   * - Call resume() to start data flow from both uWS and Node.js Readable
    *
    * @private
    */
@@ -337,53 +341,45 @@ export class UwsRequest extends Readable {
     this.streamActivated = true;
     this.bodyParserMode = 'streaming';
 
-    const allFlushed = this.flushBufferedChunks();
+    // Override _read to just call resume for simplicity
+    // This calls the public resume() which handles both uWS and Node.js Readable
+    this._read = () => this.resume();
 
-    // Only signal EOF if all chunks were pushed and we're done
-    if (this.doneReadingData && allFlushed) {
-      this.push(null); // Signal end of stream
+    // Flush all buffered chunks (ignore backpressure)
+    this.flushBufferedChunks();
+
+    // Signal EOF if done reading
+    if (this.doneReadingData) {
+      this.push(null);
     }
 
-    // Only resume if we successfully pushed all buffered chunks
-    if (allFlushed) {
-      this.resumeStream();
-    }
+    // Resume to start data flow (calls both uWS and Node.js Readable resume)
+    this.resume();
   }
 
   /**
    * Required by Readable stream interface
    * Called by stream consumers when they want more data
-   * Handles backpressure automatically
+   *
+   * This method is overridden during activateStreaming() to just call resume().
+   * Before streaming is activated, it triggers activation on first call.
+   *
+   * This simple approach provides optimal performance by delegating backpressure
+   * handling to Node.js Readable stream internals.
    */
   _read(): void {
-    // If still in awaiting mode when _read is called, activate streaming
+    // If not yet activated, activate streaming mode
     // This handles non-pipe consumers (e.g., for await...of, .read(), etc.)
     if (!this.streamActivated && this.bodyParserMode === 'awaiting') {
       this.activateStreaming();
+      // Note: activateStreaming() overrides this._read, but this call already started
+      // so we need to resume here too
       return;
     }
 
-    // If we have buffered chunks from activateStreaming backpressure, push them now
-    if (this.bufferedChunks.length > 0) {
-      const allFlushed = this.flushBufferedChunks();
-
-      // Signal EOF if all chunks pushed and done reading
-      if (this.doneReadingData && allFlushed) {
-        this.push(null);
-      }
-
-      // Resume if buffer is empty
-      if (allFlushed) {
-        this.resumeStream();
-      }
-
-      return;
-    }
-
-    // Resume uWS if paused due to backpressure in streaming mode
-    if (this.bodyParserMode === 'streaming') {
-      this.resumeStream();
-    }
+    // Default behavior: just resume
+    // (This will be overridden by activateStreaming() for subsequent calls)
+    this.resume();
   }
 
   /**
@@ -397,32 +393,15 @@ export class UwsRequest extends Readable {
   }
 
   /**
-   * Pause uWS data flow (backpressure handling)
-   */
-  private pauseStream(): void {
-    if (!this.streamPaused) {
-      this.streamPaused = true;
-      this.uwsRes.pause();
-    }
-  }
-
-  /**
-   * Resume uWS data flow
-   */
-  private resumeStream(): void {
-    if (this.streamPaused) {
-      this.streamPaused = false;
-      this.uwsRes.resume();
-    }
-  }
-
-  /**
    * Pause the request (public API for backpressure)
    * Used by multipart handler to pause data flow when handlers are async
    * Overrides Readable.pause() to also pause uWS data flow
    */
   pause(): this {
-    this.pauseStream();
+    if (!this.streamPaused) {
+      this.streamPaused = true;
+      this.uwsRes.pause();
+    }
     super.pause();
     return this;
   }
@@ -433,7 +412,10 @@ export class UwsRequest extends Readable {
    * Overrides Readable.resume() to also resume uWS data flow
    */
   resume(): this {
-    this.resumeStream();
+    if (this.streamPaused) {
+      this.streamPaused = false;
+      this.uwsRes.resume();
+    }
     super.resume();
     return this;
   }
@@ -967,7 +949,7 @@ export class UwsRequest extends Readable {
     this.bodyParserMode = 'buffering';
 
     if (wasAwaiting) {
-      this.resumeStream();
+      this.resume();
     }
 
     // Create and cache the promise

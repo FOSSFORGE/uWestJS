@@ -988,19 +988,20 @@ describe('UwsResponse', () => {
 
       await res.stream(readable, totalSize);
 
+      // Verify tryEnd was called with totalSize (which handles Content-Length internally)
       expect(mockUwsRes.tryEnd).toHaveBeenCalledWith(Buffer.from('hello'), totalSize);
-      expect(res.getHeader('content-length')).toBe('5');
       expect(res.isFinished).toBe(true);
     });
 
-    it('should set content-length header when totalSize provided', async () => {
+    it('should use tryEnd when totalSize provided', async () => {
       const readable = Readable.from(['test']);
 
       (mockUwsRes.tryEnd as jest.Mock).mockReturnValue([true, true]);
 
       await res.stream(readable, 100);
 
-      expect(res.getHeader('content-length')).toBe('100');
+      // Verify tryEnd was called with totalSize (which sets Content-Length internally in uWS)
+      expect(mockUwsRes.tryEnd).toHaveBeenCalledWith(Buffer.from('test'), 100);
     });
 
     it('should handle backpressure with onWritable', async () => {

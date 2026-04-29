@@ -422,14 +422,29 @@ export class RouteRegistry {
       }
 
       // 2. Parse body if content-type header is present
+      // Skip auto-parsing for streaming content types (application/octet-stream, multipart/form-data)
+      // These should be handled explicitly by the user via req.on('data') or req.multipart()
       let body: unknown;
-      if (req.contentType) {
+      const contentType = req.contentType;
+      const normalizedContentType = contentType?.toLowerCase();
+      const isStreamingContentType =
+        normalizedContentType &&
+        (normalizedContentType.includes('application/octet-stream') ||
+          normalizedContentType.includes('multipart/form-data'));
+
+      if (normalizedContentType && !isStreamingContentType) {
         body = await req.body;
       }
 
       // 3. Execute pipes on body
       // Run pipes if content-type was present (body was parsed), even for falsy values like null, 0, "", false
-      if (metadata?.pipes && metadata.pipes.length > 0 && req.contentType) {
+      // Skip pipes for streaming content types since body wasn't parsed
+      if (
+        metadata?.pipes &&
+        metadata.pipes.length > 0 &&
+        normalizedContentType &&
+        !isStreamingContentType
+      ) {
         body = await this.executePipes(metadata.pipes, body, metadata.bodyMetadata);
         // Attach transformed body to request so handler can access it via req.body
         req._setTransformedBody(body);
