@@ -346,24 +346,27 @@ npm run test:watch
 
 uWestJS delivers exceptional performance compared to traditional Node.js frameworks:
 
-| Scenario | Express | Fastify | uWestJS | vs Express | vs Fastify |
-|----------|---------|---------|---------|------------|------------|
-| headers | 9.55k req/s | 8.85k req/s | **18.42k req/s** | **1.93x faster** | **2.08x faster** |
-| hello-world | 10.58k req/s | 12.83k req/s | **22.77k req/s** | **2.15x faster** | **1.77x faster** |
-| json-response | 10.18k req/s | 9.48k req/s | **18.75k req/s** | **1.84x faster** | **1.98x faster** |
-| mixed-response | 9.60k req/s | 8.01k req/s | **24.62k req/s** | **2.57x faster** | **3.07x faster** |
-| post-json | 10.60k req/s | 12.70k req/s | **45.38k req/s** | **4.28x faster** | **3.57x faster** |
-| query-params | 9.08k req/s | 12.45k req/s | **19.88k req/s** | **2.19x faster** | **1.60x faster** |
-| route-params | 10.67k req/s | 12.04k req/s | **18.77k req/s** | **1.76x faster** | **1.56x faster** |
-| static-file | 10.42k req/s | 12.96k req/s | **21.39k req/s** | **2.05x faster** | **1.65x faster** |
 
-**Average improvement: 1.56x-4.28x faster** across all scenarios.
+| Scenario | Express req/s | Fastify req/s | uWestJS req/s | Express throughput | Fastify throughput | uWestJS throughput | uWestJS vs Express | uWestJS vs Fastify |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| compression | 21.47k | 11.75k | 24.40k | 11.28 MB/s | 6.02 MB/s | 11.22 MB/s | **1.14x** | **2.08x** |
+| headers | 51.45k | 83.36k | 116.87k | 9.57 MB/s | 15.58 MB/s | 18.39 MB/s | **2.27x** | **1.40x** |
+| hello-world | 54.97k | 85.83k | 138.49k | 9.12 MB/s | 14.41 MB/s | 13.74 MB/s | **2.52x** | **1.61x** |
+| json-response | 51.11k | 79.57k | 113.99k | 13.94 MB/s | 21.78 MB/s | 27.83 MB/s | **2.23x** | **1.43x** |
+| mixed-response | 51.62k | 79.64k | 112.89k | 11.91 MB/s | 18.46 MB/s | 22.82 MB/s | **2.19x** | **1.42x** |
+| post-json | 45.23k | 39.57k | 79.88k | 8.37 MB/s | 10.79 MB/s | 13.56 MB/s | **1.77x** | **2.02x** |
+| query-params | 41.64k | 79.31k | 121.08k | 9.17 MB/s | 17.55 MB/s | 16.28 MB/s | **2.91x** | **1.53x** |
+| route-params | 49.30k | 78.81k | 116.46k | 11.24 MB/s | 18.04 MB/s | 23.21 MB/s | **2.36x** | **1.48x** |
+| static-file | 57.16k | 70.95k | 107.60k | 567.34 MB/s | 703.25 MB/s | 1.04 GB/s | **1.88x** | **1.52x** |
+| streaming-upload | 324.32 | 324.09 | 338.69 | 72.21 KB/s | 67.73 KB/s | 65.49 KB/s | **1.04x** | **1.05x** |
+
+
 
 **Test Environment:**
-- CPU: AMD Ryzen 7 7730U (2.00 GHz, 8 cores)
+- CPU: AMD Ryzen 9 8945HS (8 cores / 16 threads, base ~4.0 GHz)
 - RAM: 16 GB
-- OS: Windows 11 with WSL2 (Ubuntu)
-- Node.js: v24.x
+- OS: Ubuntu 24.04 (native)
+- Node.js: v24.12.0
 - Duration: 20s per scenario
 
 Run benchmarks yourself:
