@@ -1,7 +1,7 @@
 import type { HttpRequest, HttpResponse } from 'uWebSockets.js';
 import { Writable } from 'stream';
 import { UwsRequest } from './request';
-import { toArrayBuffer } from '../test-helpers';
+import { toArrayBuffer, createMockResponse } from '../test-helpers';
 import * as signature from 'cookie-signature';
 import type { MultipartField } from '../body/multipart-handler';
 
@@ -22,8 +22,9 @@ describe('UwsRequest', () => {
   const createRequestWithBody = (contentType: string, bodyContent: string) => {
     setHeaders(['content-type', contentType], ['content-length', bodyContent.length.toString()]);
     const req = new UwsRequest(mockUwsReq, mockUwsRes);
-    req._initBodyParser(1024 * 1024);
-    return { req, bodyContent };
+    const mockResponse = createMockResponse();
+    req._initBodyParser(1024 * 1024, false, mockResponse as any);
+    return { req, bodyContent, mockResponse };
   };
 
   // Helper to simulate body data arrival
@@ -347,7 +348,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-length', '10']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       expect(mockUwsRes.onData).toHaveBeenCalled();
     });
@@ -356,7 +358,8 @@ describe('UwsRequest', () => {
       setHeaders(['transfer-encoding', 'chunked']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       expect(mockUwsRes.onData).toHaveBeenCalled();
       expect(req.isReceived).toBe(false); // Should expect body
@@ -365,7 +368,8 @@ describe('UwsRequest', () => {
     it('should not initialize body parser when no content-length or transfer-encoding', () => {
       // No headers set - no body expected
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       expect(mockUwsRes.onData).not.toHaveBeenCalled();
       expect(req.isReceived).toBe(true); // No body expected
@@ -447,8 +451,10 @@ describe('UwsRequest', () => {
         const req2 = new UwsRequest(mockUwsReq, mockUwsRes);
 
         mockUwsReq.getMethod.mockReturnValue('GET');
-        req1._initBodyParser(1024);
-        req2._initBodyParser(1024);
+        const mockResponse1 = createMockResponse();
+        req1._initBodyParser(1024, false, mockResponse1 as any);
+        const mockResponse2 = createMockResponse();
+        req2._initBodyParser(1024, false, mockResponse2 as any);
 
         onDataCallback(toArrayBuffer(Buffer.from('')), true);
 
@@ -464,7 +470,8 @@ describe('UwsRequest', () => {
         setHeaders(['content-length', '5']);
 
         const req = new UwsRequest(mockUwsReq, mockUwsRes);
-        req._initBodyParser(1024 * 1024);
+        const mockResponse = createMockResponse();
+        req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
         const bufferPromise = req.buffer();
         sendBody('Hello');
@@ -528,7 +535,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'text/plain'], ['content-length', '11']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       const textPromise = req.text();
 
@@ -546,7 +554,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-length', '2000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1000); // 1KB limit
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1000, false, mockResponse as any); // 1KB limit
 
       // Connection should be closed immediately
       expect(mockUwsRes.close).toHaveBeenCalled();
@@ -563,7 +572,8 @@ describe('UwsRequest', () => {
       setHeaders(['transfer-encoding', 'chunked']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(50); // 50 byte limit
+      const mockResponse = createMockResponse();
+      req._initBodyParser(50, false, mockResponse as any); // 50 byte limit
 
       // Start consuming the body
       const bufferPromise = req.buffer();
@@ -581,19 +591,8 @@ describe('UwsRequest', () => {
   });
 
   describe('abort handling', () => {
-    let onAbortedCallback: () => void = () => {
-      throw new Error('onAbortedCallback not yet initialized');
-    };
-
-    beforeEach(() => {
-      mockUwsRes.onAborted = jest.fn((callback) => {
-        onAbortedCallback = callback;
-        return mockUwsRes;
-      });
-    });
-
     it('should detect aborted connection', () => {
-      const { req } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, mockResponse } = createRequestWithBody('application/json', '{"test":"data"}');
 
       // Add error listener to prevent unhandled error
       req.on('error', () => {
@@ -602,8 +601,8 @@ describe('UwsRequest', () => {
 
       expect(req.isAborted).toBe(false);
 
-      // Simulate connection abort
-      onAbortedCallback();
+      // Simulate connection abort via mock response
+      mockResponse.triggerAbort();
 
       expect(req.isAborted).toBe(true);
     });
@@ -621,24 +620,27 @@ describe('UwsRequest', () => {
     ] as const)(
       'should reject %s promise when connection is aborted',
       async (methodName, contentType, bodyContent, method) => {
-        const { req } = createRequestWithBody(contentType, bodyContent);
+        const { req, mockResponse } = createRequestWithBody(contentType, bodyContent);
 
         const promise = method(req);
 
         // Simulate connection abort
-        onAbortedCallback();
+        mockResponse.triggerAbort();
 
         await expect(promise).rejects.toThrow('Connection aborted');
       }
     );
 
     it('should stop processing chunks after abort', async () => {
-      const { req, bodyContent } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, bodyContent, mockResponse } = createRequestWithBody(
+        'application/json',
+        '{"test":"data"}'
+      );
 
       const bufferPromise = req.buffer();
 
       // Simulate connection abort
-      onAbortedCallback();
+      mockResponse.triggerAbort();
 
       // Try to send data after abort - should be ignored
       sendBody(bodyContent);
@@ -648,7 +650,7 @@ describe('UwsRequest', () => {
     });
 
     it('should emit error event on abort', (done) => {
-      const { req } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, mockResponse } = createRequestWithBody('application/json', '{"test":"data"}');
 
       req.on('error', (error) => {
         expect(error.message).toBe('Connection aborted');
@@ -656,11 +658,11 @@ describe('UwsRequest', () => {
       });
 
       // Simulate connection abort
-      onAbortedCallback();
+      mockResponse.triggerAbort();
     });
 
     it('should handle abort during streaming mode', (done) => {
-      const { req } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, mockResponse } = createRequestWithBody('application/json', '{"test":"data"}');
 
       // Activate streaming mode
       req.pipe(
@@ -677,11 +679,11 @@ describe('UwsRequest', () => {
       });
 
       // Simulate connection abort
-      onAbortedCallback();
+      mockResponse.triggerAbort();
     });
 
     it('should throw error when getAllData is called after abort', async () => {
-      const { req } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, mockResponse } = createRequestWithBody('application/json', '{"test":"data"}');
 
       // Add error listener to prevent unhandled error
       req.on('error', () => {
@@ -689,20 +691,20 @@ describe('UwsRequest', () => {
       });
 
       // Simulate connection abort
-      onAbortedCallback();
+      mockResponse.triggerAbort();
 
       // Try to get data after abort
       await expect(req.buffer()).rejects.toThrow('Connection aborted');
     });
 
     it('should not emit error when no error listeners attached', () => {
-      const { req } = createRequestWithBody('application/json', '{"test":"data"}');
+      const { req, mockResponse } = createRequestWithBody('application/json', '{"test":"data"}');
 
       // Don't add error listener - this should not cause uncaught error
       expect(req.isAborted).toBe(false);
 
       // Simulate connection abort - should not throw
-      expect(() => onAbortedCallback()).not.toThrow();
+      expect(() => mockResponse.triggerAbort()).not.toThrow();
 
       expect(req.isAborted).toBe(true);
     });
@@ -713,7 +715,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/json'], ['content-length', '200000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send large chunk that exceeds 128KB watermark
       const largeChunk = Buffer.alloc(150 * 1024, 'x');
@@ -727,7 +730,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/json'], ['content-length', '200000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send large chunk that exceeds watermark
       const largeChunk = Buffer.alloc(150 * 1024, 'x');
@@ -751,7 +755,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/json'], ['content-length', '200000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Start buffering immediately
       void req.buffer();
@@ -768,7 +773,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/octet-stream'], ['content-length', '1000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Mock push to return false (backpressure)
       jest.spyOn(req, 'push').mockReturnValue(false);
@@ -791,7 +797,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/octet-stream'], ['content-length', '1000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Mock push to return false (backpressure)
       jest.spyOn(req, 'push').mockReturnValue(false);
@@ -820,7 +827,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/octet-stream'], ['content-length', '200000']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send large chunk that exceeds watermark in awaiting mode
       const largeChunk = Buffer.alloc(150 * 1024, 'x');
@@ -845,7 +853,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-length', '100']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       expect(req.isReceived).toBe(false);
     });
@@ -854,7 +863,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-length', '0']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       expect(req.isReceived).toBe(true);
     });
@@ -898,7 +908,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/json'], ['content-length', '100']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send some data
       onDataCallback(toArrayBuffer(Buffer.from('{"test":')), false);
@@ -950,7 +961,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/octet-stream'], ['content-length', '100']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send data while in awaiting mode (will be buffered)
       onDataCallback(toArrayBuffer(Buffer.from('Hello ')), false);
@@ -983,7 +995,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-type', 'application/octet-stream'], ['content-length', '100']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Send some data while in awaiting mode
       onDataCallback(toArrayBuffer(Buffer.from('Hello ')), false);
@@ -1023,7 +1036,8 @@ describe('UwsRequest', () => {
       );
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       const fields: MultipartField[] = [];
       const parsePromise = req.multipart(async (field) => {
@@ -1064,7 +1078,8 @@ describe('UwsRequest', () => {
       setHeaders(['content-length', '10']);
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       // Try to parse multipart without content-type - should throw
       await expect(req.multipart(async () => {})).rejects.toThrow(

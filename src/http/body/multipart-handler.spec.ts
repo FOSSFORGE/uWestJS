@@ -2,7 +2,7 @@ import type { HttpRequest, HttpResponse } from 'uWebSockets.js';
 import { UwsRequest } from '../core/request';
 import type { MultipartField } from './multipart-handler';
 import { MultipartFormHandler } from './multipart-handler';
-import { toArrayBuffer } from '../test-helpers';
+import { toArrayBuffer, createMockResponse } from '../test-helpers';
 
 describe('MultipartFormHandler', () => {
   let mockUwsReq: jest.Mocked<HttpRequest>;
@@ -50,7 +50,8 @@ describe('MultipartFormHandler', () => {
       ['content-length', bodyLength.toString()],
     ];
     const req = new UwsRequest(mockUwsReq, mockUwsRes);
-    req._initBodyParser(1024 * 1024);
+    const mockResponse = createMockResponse();
+    req._initBodyParser(1024 * 1024, false, mockResponse as any);
     return req;
   };
 
@@ -316,7 +317,8 @@ describe('MultipartFormHandler', () => {
       ];
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       await expect(req.multipart(async (_field) => {})).rejects.toThrow(
         'Cannot parse multipart: Content-Type must be multipart/*, got: application/json'
@@ -358,7 +360,8 @@ describe('MultipartFormHandler', () => {
       ];
 
       const req = new UwsRequest(mockUwsReq, mockUwsRes);
-      req._initBodyParser(1024 * 1024);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
 
       await expect(req.multipart(async (_field) => {})).rejects.toThrow(
         'Invalid multipart Content-Type'

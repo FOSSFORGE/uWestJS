@@ -825,16 +825,17 @@ export class UwsRequest extends Readable {
    * - Size limit enforcement
    * - Backpressure management
    * - Mode-based chunk routing
-   * - Abort handling
+   * - Abort handling via response multiplexing
    *
    * @param maxBodySize - Maximum body size in bytes
    * @param fastAbort - Whether to close connection immediately on size limit (no HTTP status)
+   * @param response - Response object for abort multiplexing (required)
    * @internal
    */
   _initBodyParser(
     maxBodySize: number,
     fastAbort = false,
-    response?: import('./response').UwsResponse
+    response: import('./response').UwsResponse
   ): void {
     // Store size limit for enforcement
     this.maxBodySize = maxBodySize;
@@ -872,35 +873,21 @@ export class UwsRequest extends Readable {
     // We expect a body - set doneReadingData to false
     this.doneReadingData = false;
 
-    // Register abort handler through response multiplexing if available
-    if (response) {
-      response._onAbort(() => {
-        this.aborted = true;
-        this.abortError = new Error('Connection aborted');
-        this.flushing = true; // Stop processing chunks
+    // Register abort handler through response multiplexing
+    // The response object provides _onAbort() which allows multiple handlers
+    // to be registered without overwriting each other (unlike direct uwsRes.onAborted())
+    response._onAbort(() => {
+      this.aborted = true;
+      this.abortError = new Error('Connection aborted');
+      this.flushing = true; // Stop processing chunks
 
-        // Only emit error if there are listeners to handle it
-        if (this.listenerCount('error') > 0) {
-          this.destroy(this.abortError);
-        } else {
-          this.destroy();
-        }
-      });
-    } else {
-      // Fallback: register directly on uwsRes (legacy behavior)
-      // This will overwrite any existing handler - not recommended
-      this.uwsRes.onAborted(() => {
-        this.aborted = true;
-        this.abortError = new Error('Connection aborted');
-        this.flushing = true;
-
-        if (this.listenerCount('error') > 0) {
-          this.destroy(this.abortError);
-        } else {
-          this.destroy();
-        }
-      });
-    }
+      // Only emit error if there are listeners to handle it
+      if (this.listenerCount('error') > 0) {
+        this.destroy(this.abortError);
+      } else {
+        this.destroy();
+      }
+    });
 
     // Register onData callback for streaming infrastructure
     this.uwsRes.onData((chunk, isLast) => {

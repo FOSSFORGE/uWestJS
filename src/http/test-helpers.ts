@@ -252,3 +252,43 @@ export function createMockUwsApp(options: MockUwsAppOptions = {}): {
     listenSocket,
   };
 }
+
+/**
+ * Create a mock UwsResponse for testing
+ *
+ * This creates a minimal mock of the UwsResponse class that can be used
+ * in tests that need to pass a response object to _initBodyParser().
+ *
+ * @returns Mocked UwsResponse with _onAbort method
+ *
+ * @example
+ * ```typescript
+ * const mockResponse = createMockResponse();
+ * req._initBodyParser(1024 * 1024, false, mockResponse);
+ * ```
+ */
+export function createMockResponse(): {
+  _onAbort: jest.Mock<void, [() => void]>;
+  abortCallbacks: Array<() => void>;
+  triggerAbort: () => void;
+} {
+  const abortCallbacks: Array<() => void> = [];
+
+  const mockResponse = {
+    _onAbort: jest.fn((callback: () => void) => {
+      abortCallbacks.push(callback);
+    }),
+    abortCallbacks,
+    triggerAbort: () => {
+      for (const cb of abortCallbacks) {
+        try {
+          cb();
+        } catch {
+          // Ignore errors
+        }
+      }
+    },
+  };
+
+  return mockResponse;
+}
