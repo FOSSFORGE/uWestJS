@@ -378,12 +378,13 @@ describe('CorsHandler', () => {
       expect(sendSpy).toHaveBeenCalled();
     });
 
-    it('should reject preflight with 403 when requested headers are not allowed', async () => {
+    it('should reject preflight with 403 when ANY requested header is not allowed', async () => {
       const handler = new CorsHandler({
         allowedHeaders: ['Content-Type', 'Authorization'],
       });
       setupRequest('https://example.com', 'OPTIONS');
-      mockReq.headers!['access-control-request-headers'] = 'X-Custom-Header, X-Forbidden';
+      // Content-Type is allowed, but X-Forbidden is not
+      mockReq.headers!['access-control-request-headers'] = 'Content-Type, X-Forbidden';
 
       const handled = await handleCors(handler);
 
