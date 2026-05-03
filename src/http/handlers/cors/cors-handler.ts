@@ -162,14 +162,14 @@ export class CorsHandler {
       // User explicitly configured allowedHeaders - validate requested headers
       const requested = requestedHeaders.split(',').map((h) => h.trim().toLowerCase());
       const allowed = this.options.allowedHeaders.map((h) => h.toLowerCase());
-      const validated = requested.filter((h) => allowed.includes(h));
+      const isValid = requested.every((h) => allowed.includes(h));
 
-      if (validated.length === 0) {
-        // Requested headers not allowed - reject preflight
+      if (!isValid) {
+        // One or more requested headers are not allowed - reject preflight
         res.status(403).send();
         return true;
       }
-      allowedHeadersToSend = validated.join(', ');
+      allowedHeadersToSend = requested.join(', ');
     } else if (requestedHeaders) {
       // No allowedHeaders configured or empty array - echo back (permissive mode)
       allowedHeadersToSend = requestedHeaders;
