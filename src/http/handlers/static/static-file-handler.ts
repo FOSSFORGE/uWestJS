@@ -125,17 +125,16 @@ export interface StaticFileOptions {
    * which creates ETags based on file statistics (size and modification time).
    *
    * You can provide a custom function to override the default behavior.
-   * For example, to generate content-based ETags using file hashing:
+   * For example:
    *
    * ```ts
    * etagFn: (stat) => {
-   *   const hash = crypto.createHash('md5').update(fileContent).digest('hex');
-   *   return `"${hash}"`;
+   *   return `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
    * }
    * ```
    *
-   * Note: Content-based ETags require reading the entire file, which impacts performance.
-   * The default stat-based approach is much faster and suitable for most use cases.
+   * Note: The 'etagFn' only recieves file stats (`fs.Stats`) and does not have access
+   * to file content.
    */
   etagFn?: (stat: fs.Stats) => string;
 
