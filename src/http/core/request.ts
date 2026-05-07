@@ -1,10 +1,12 @@
 import type { HttpRequest, HttpResponse } from 'uWebSockets.js';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
+import * as zlib from 'zlib';
 import * as cookie from 'cookie';
 import * as signature from 'cookie-signature';
 import type * as busboy from 'busboy';
 import type { MultipartFieldHandler } from '../body/multipart-handler';
 import { MultipartFormHandler } from '../body/multipart-handler';
+import type { UwsResponse } from './response';
 
 /**
  * Buffer watermark for backpressure management
@@ -136,6 +138,12 @@ export class UwsRequest extends Readable {
   // Reference to response (for body parsing and streaming)
   private readonly uwsRes: HttpResponse;
 
+  // Reference to response wrapper (for sending 413 status on body size limit)
+  private responseWrapper?: UwsResponse;
+
+  // Decompression stream for Content-Encoding support
+  private decompressionStream?: Transform;
+
   // Readable stream state (Hybrid streaming implementation)
   private streamActivated = false;
   private bodyParserMode: 'awaiting' | 'buffering' | 'streaming' = 'awaiting';
@@ -221,6 +229,7 @@ export class UwsRequest extends Readable {
    * - 'streaming': Pushes to readable stream for pipe() or stream consumers
    *
    * Also enforces size limits, handles backpressure, and checks for aborted connections.
+   * Supports automatic decompression for gzip/deflate/brotli Content-Encoding.
    *
    * @param chunk - Incoming data chunk
    * @param isLast - Whether this is the last chunk
@@ -242,14 +251,56 @@ export class UwsRequest extends Readable {
     // Buffer.from(chunk) creates a view that shares memory, which becomes invalid
     // We must create an independent copy using new Uint8Array(chunk)
     const buffer = Buffer.from(new Uint8Array(chunk));
+
+    // If decompression stream exists, write to it instead of processing directly
+    if (this.decompressionStream) {
+      const canContinue = isLast
+        ? (this.decompressionStream.end(buffer), true)
+        : this.decompressionStream.write(buffer);
+
+      // Handle backpressure from decompression stream
+      if (!canContinue && !isLast) {
+        this.pause();
+        this.decompressionStream.once('drain', () => {
+          this.resume();
+        });
+      }
+      return;
+    }
+
+    // No decompression - process buffer directly
+    this.processDecompressedChunk(buffer, isLast, fastAbort);
+  }
+
+  /**
+   * Process a decompressed chunk (or raw chunk if no decompression)
+   *
+   * @param buffer - Decompressed buffer
+   * @param isLast - Whether this is the last chunk
+   * @param fastAbort - Whether to close connection immediately on size limit
+   * @private
+   */
+  private processDecompressedChunk(buffer: Buffer, isLast: boolean, fastAbort: boolean): void {
     this.totalReceivedBytes += buffer.length;
 
     // Enforce size limit
     if (this.maxBodySize > 0 && this.totalReceivedBytes > this.maxBodySize) {
-      // Size limit exceeded - mark as flushing and close connection
+      // Size limit exceeded - mark as flushing to stop processing chunks
       this.flushing = true;
       this.abortError = new Error('Body size limit exceeded');
-      this.uwsRes.close();
+
+      // Send 413 Payload Too Large response if response hasn't been initiated
+      if (this.responseWrapper && !this.responseWrapper.headersSent && !fastAbort) {
+        try {
+          this.responseWrapper.status(413).send();
+        } catch {
+          // If sending 413 fails (e.g., connection already closed), fall back to closing
+          this.uwsRes.close();
+        }
+      } else {
+        // Fast abort mode or response already initiated - close connection immediately
+        this.uwsRes.close();
+      }
 
       // Only emit error if not using fast abort (for proper error handling)
       if (!fastAbort) {
@@ -816,6 +867,121 @@ export class UwsRequest extends Readable {
   }
 
   /**
+   * Check if body size exceeds limit and handle accordingly
+   * @private
+   */
+  private handleBodySizeLimit(
+    contentLength: number,
+    maxBodySize: number,
+    fastAbort: boolean
+  ): boolean {
+    if (maxBodySize > 0 && contentLength > maxBodySize) {
+      this.abortError = new Error('Body size limit exceeded');
+      this.aborted = true;
+      this.doneReadingData = true;
+
+      if (this.responseWrapper && !this.responseWrapper.headersSent && !fastAbort) {
+        try {
+          this.responseWrapper.status(413).send();
+        } catch {
+          this.uwsRes.close();
+        }
+      } else {
+        this.uwsRes.close();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Create decompression stream based on Content-Encoding header
+   * @private
+   */
+  private createDecompressionStream(encoding: string): Transform | null | false {
+    switch (encoding) {
+      case 'gzip':
+        return zlib.createGunzip();
+      case 'deflate':
+        return zlib.createInflate();
+      case 'br':
+        return zlib.createBrotliDecompress();
+      case 'identity':
+        return null; // No decompression needed
+      default:
+        return false; // Unsupported encoding
+    }
+  }
+
+  /**
+   * Handle unsupported Content-Encoding
+   * @private
+   */
+  private handleUnsupportedEncoding(encoding: string, fastAbort: boolean): void {
+    this.abortError = new Error(`Unsupported content encoding: ${encoding}`);
+    this.aborted = true;
+    this.doneReadingData = true;
+
+    if (this.responseWrapper && !this.responseWrapper.headersSent && !fastAbort) {
+      try {
+        this.responseWrapper.status(415).send({
+          error: 'Unsupported Media Type',
+          message: `Content-Encoding '${encoding}' is not supported. Supported encodings: gzip, deflate, br, identity`,
+        });
+      } catch {
+        this.uwsRes.close();
+      }
+    } else {
+      this.uwsRes.close();
+    }
+  }
+
+  /**
+   * Set up decompression stream event handlers
+   * @private
+   */
+  private setupDecompressionHandlers(decompress: Transform, fastAbort: boolean): void {
+    this.decompressionStream = decompress;
+
+    decompress.on('data', (chunk: Buffer) => {
+      this.processDecompressedChunk(chunk, false, fastAbort);
+    });
+
+    decompress.on('end', () => {
+      this.doneReadingData = true;
+
+      // Signal EOF to streaming consumers
+      if (this.bodyParserMode === 'streaming') {
+        this.push(null);
+      }
+
+      this.emit('received', this.totalReceivedBytes);
+    });
+
+    decompress.on('error', (error: Error) => {
+      this.flushing = true;
+      this.aborted = true;
+      this.abortError = error;
+
+      if (this.responseWrapper && !this.responseWrapper.headersSent && !fastAbort) {
+        try {
+          this.responseWrapper.status(400).send({ error: 'Invalid compressed data' });
+        } catch {
+          this.uwsRes.close();
+        }
+      } else {
+        this.uwsRes.close();
+      }
+
+      if (!fastAbort && this.listenerCount('error') > 0) {
+        this.destroy(error);
+      } else {
+        this.destroy();
+      }
+    });
+  }
+
+  /**
    * Initialize body parser (called by platform adapter)
    *
    * This must be called synchronously during request handling setup,
@@ -837,10 +1003,9 @@ export class UwsRequest extends Readable {
     fastAbort = false,
     response: import('./response').UwsResponse
   ): void {
-    // Store size limit for enforcement
     this.maxBodySize = maxBodySize;
+    this.responseWrapper = response;
 
-    // Check if we expect a body based on content-length or transfer-encoding
     const contentLength = this.contentLength;
 
     // Check for chunked transfer encoding
@@ -850,38 +1015,47 @@ export class UwsRequest extends Readable {
       : (transferEncodingHeader ?? '');
     const hasChunkedBody = transferEncoding.toLowerCase().includes('chunked');
 
-    // Only skip body handling if:
-    // - contentLength is explicitly 0, OR
-    // - contentLength is undefined AND no chunked transfer encoding
+    // Skip body handling if no body expected
     if (contentLength === 0 || (contentLength === undefined && !hasChunkedBody)) {
-      // No body expected - keep doneReadingData as true
       return;
     }
 
-    // Check size limit before starting to receive data (only for known content-length)
-    if (maxBodySize > 0 && contentLength !== undefined && contentLength > maxBodySize) {
-      // Body exceeds limit - set error state and close connection
-      // Don't call destroy() here to avoid emitting error during construction
-      // Body methods will check aborted state via checkAborted() and throw
-      this.abortError = new Error('Body size limit exceeded');
-      this.aborted = true;
-      this.doneReadingData = true; // Mark as done to prevent waiting
-      this.uwsRes.close();
+    // Check size limit for known content-length
+    if (
+      contentLength !== undefined &&
+      this.handleBodySizeLimit(contentLength, maxBodySize, fastAbort)
+    ) {
       return;
     }
 
-    // We expect a body - set doneReadingData to false
     this.doneReadingData = false;
 
-    // Register abort handler through response multiplexing
-    // The response object provides _onAbort() which allows multiple handlers
-    // to be registered without overwriting each other (unlike direct uwsRes.onAborted())
+    // Handle Content-Encoding decompression
+    const contentEncodingHeader = this.get('content-encoding');
+    const contentEncoding = Array.isArray(contentEncodingHeader)
+      ? contentEncodingHeader.join(',')
+      : (contentEncodingHeader ?? '');
+
+    if (contentEncoding) {
+      const encoding = contentEncoding.toLowerCase().trim();
+      const decompress = this.createDecompressionStream(encoding);
+
+      if (decompress === false) {
+        this.handleUnsupportedEncoding(encoding, fastAbort);
+        return;
+      }
+
+      if (decompress) {
+        this.setupDecompressionHandlers(decompress, fastAbort);
+      }
+    }
+
+    // Register abort handler
     response._onAbort(() => {
       this.aborted = true;
       this.abortError = new Error('Connection aborted');
-      this.flushing = true; // Stop processing chunks
+      this.flushing = true;
 
-      // Only emit error if there are listeners to handle it
       if (this.listenerCount('error') > 0) {
         this.destroy(this.abortError);
       } else {
@@ -889,7 +1063,7 @@ export class UwsRequest extends Readable {
       }
     });
 
-    // Register onData callback for streaming infrastructure
+    // Register onData callback
     this.uwsRes.onData((chunk, isLast) => {
       this.handleIncomingChunk(chunk, isLast, fastAbort);
     });
