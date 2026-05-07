@@ -1,0 +1,216 @@
+{
+  "timestamp": "2026-05-07T06:33:19.644Z",
+  "date": "2026-05-07",
+  "commit": "2e70fef",
+  "commitMessage": "Merge pull request #91 from Ashwani1405/fix-etag-doc-example\n\nFix: misleading example in `etagFn` documentation",
+  "branch": "main",
+  "nodeVersion": "v24.14.1",
+  "platform": "linux",
+  "arch": "x64",
+  "results": [
+    {
+      "scenario": "compression",
+      "express": {
+        "reqPerSec": "6.43k",
+        "throughput": "3.38 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "5.13k",
+        "throughput": "2.63 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "7.98k",
+        "throughput": "3.67 MB/s"
+      },
+      "vsExpress": "**1.24x**",
+      "vsFastify": "**1.56x**"
+    },
+    {
+      "scenario": "headers",
+      "express": {
+        "reqPerSec": "22.45k",
+        "throughput": "4.17 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "34.01k",
+        "throughput": "6.36 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "67.26k",
+        "throughput": "10.58 MB/s"
+      },
+      "vsExpress": "**3.00x**",
+      "vsFastify": "**1.98x**"
+    },
+    {
+      "scenario": "hello-world",
+      "express": {
+        "reqPerSec": "23.26k",
+        "throughput": "3.86 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "39.12k",
+        "throughput": "6.57 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "68.07k",
+        "throughput": "6.75 MB/s"
+      },
+      "vsExpress": "**2.93x**",
+      "vsFastify": "**1.74x**"
+    },
+    {
+      "scenario": "json-response",
+      "express": {
+        "reqPerSec": "21.96k",
+        "throughput": "5.99 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "33.95k",
+        "throughput": "9.29 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "64.75k",
+        "throughput": "15.81 MB/s"
+      },
+      "vsExpress": "**2.95x**",
+      "vsFastify": "**1.91x**"
+    },
+    {
+      "scenario": "mixed-response",
+      "express": {
+        "reqPerSec": "21.24k",
+        "throughput": "4.90 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "34.78k",
+        "throughput": "8.06 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "63.03k",
+        "throughput": "12.74 MB/s"
+      },
+      "vsExpress": "**2.97x**",
+      "vsFastify": "**1.81x**"
+    },
+    {
+      "scenario": "post-json",
+      "express": {
+        "reqPerSec": "19.88k",
+        "throughput": "3.68 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "16.74k",
+        "throughput": "4.57 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "32.41k",
+        "throughput": "5.50 MB/s"
+      },
+      "vsExpress": "**1.63x**",
+      "vsFastify": "**1.94x**"
+    },
+    {
+      "scenario": "query-params",
+      "express": {
+        "reqPerSec": "18.11k",
+        "throughput": "3.99 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "35.10k",
+        "throughput": "7.77 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "67.90k",
+        "throughput": "9.13 MB/s"
+      },
+      "vsExpress": "**3.75x**",
+      "vsFastify": "**1.93x**"
+    },
+    {
+      "scenario": "route-params",
+      "express": {
+        "reqPerSec": "20.85k",
+        "throughput": "4.75 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "31.92k",
+        "throughput": "7.31 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "61.07k",
+        "throughput": "12.17 MB/s"
+      },
+      "vsExpress": "**2.93x**",
+      "vsFastify": "**1.91x**"
+    },
+    {
+      "scenario": "static-file",
+      "express": {
+        "reqPerSec": "23.10k",
+        "throughput": "229.29 MB/s"
+      },
+      "fastify": {
+        "reqPerSec": "29.63k",
+        "throughput": "293.63 MB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "61.68k",
+        "throughput": "610.40 MB/s"
+      },
+      "vsExpress": "**2.67x**",
+      "vsFastify": "**2.08x**"
+    },
+    {
+      "scenario": "streaming-upload",
+      "express": {
+        "reqPerSec": "209.10",
+        "throughput": "46.56 KB/s"
+      },
+      "fastify": {
+        "reqPerSec": "200.76",
+        "throughput": "41.96 KB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "226.34",
+        "throughput": "43.76 KB/s"
+      },
+      "vsExpress": "**1.08x**",
+      "vsFastify": "**1.13x**"
+    },
+    {
+      "scenario": "streaming-with-content-length",
+      "express": {
+        "reqPerSec": "421.77",
+        "throughput": "2.06 GB/s"
+      },
+      "fastify": {
+        "reqPerSec": "422.75",
+        "throughput": "2.06 GB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "421.77",
+        "throughput": "2.06 GB/s"
+      },
+      "vsExpress": "**1.00x**",
+      "vsFastify": "**1.00x**"
+    },
+    {
+      "scenario": "streaming-without-content-length",
+      "express": {
+        "reqPerSec": "411.82",
+        "throughput": "2.01 GB/s"
+      },
+      "fastify": {
+        "reqPerSec": "410.72",
+        "throughput": "2.01 GB/s"
+      },
+      "uwestjs": {
+        "reqPerSec": "409.57",
+        "throughput": "2.00 GB/s"
+      },
+      "vsExpress": "**0.99x**",
+      "vsFastify": "**1.00x**"
+    }
+  ]
+}
