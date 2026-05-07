@@ -233,6 +233,26 @@ describe('GuardExecutor', () => {
       expect(wsContext!.getPattern()).toBe('handleMessage');
     });
 
+    it('should throw when switching to RPC context', async () => {
+      class RpcCheckGuard implements CanActivate {
+        canActivate(context: ExecutionContext): boolean {
+          context.switchToRpc();
+          return true;
+        }
+      }
+
+      class TestGateway {
+        @UseGuards(RpcCheckGuard)
+        handleMessage() {}
+      }
+
+      const context = createContext(new TestGateway());
+
+      await expect(executor.executeGuards(context)).rejects.toThrow(
+        'RPC context not available in WebSocket'
+      );
+    });
+
     it('should provide correct getArgByIndex for valid and invalid indices', async () => {
       let receivedContext: ExecutionContext | null = null;
 

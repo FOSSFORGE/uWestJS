@@ -143,6 +143,24 @@ describe('ExceptionFilterExecutor', () => {
       expect(receivedHost!.switchToWs().getData()).toBe(data);
     });
 
+    it('should throw when switching to RPC context', async () => {
+      expect.assertions(1);
+
+      class RpcCheckFilter implements ExceptionFilter {
+        catch(_exception: Error, host: ArgumentsHost): void {
+          expect(() => host.switchToRpc()).toThrow('RPC context not available in WebSocket');
+        }
+      }
+
+      class TestGateway {
+        @UseFilters(RpcCheckFilter)
+        handleMessage() {}
+      }
+
+      const host = createHost(new TestGateway());
+      await executor.catch(new Error('Test'), host);
+    });
+
     it('should provide correct getArgs and getArgByIndex', async () => {
       let receivedHost: ArgumentsHost | null = null;
 

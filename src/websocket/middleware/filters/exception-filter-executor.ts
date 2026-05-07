@@ -124,10 +124,9 @@ export class ExceptionFilterExecutor {
     return {
       getArgs: <T extends unknown[] = unknown[]>() => args as T,
       getArgByIndex: <T = unknown>(index: number): T => args[index] as T,
-      switchToRpc: () => ({
-        getContext: () => host.client,
-        getData: () => host.data,
-      }),
+      switchToRpc: () => {
+        throw new Error('RPC context not available in WebSocket');
+      },
       switchToHttp: () => {
         throw new Error('HTTP context not available in WebSocket');
       },
