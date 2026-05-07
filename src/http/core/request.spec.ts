@@ -627,8 +627,7 @@ describe('UwsRequest', () => {
 
       // Should close immediately in fast abort mode
       expect(mockUwsRes.close).toHaveBeenCalled();
-      // In fast abort mode, we don't try to send a response
-      // The connection is just closed immediately
+      expect(req.isAborted).toBe(true);
     });
   });
 
@@ -844,6 +843,37 @@ describe('UwsRequest', () => {
       expect(() => {
         onDataCallback(toArrayBuffer(moreData), true);
       }).not.toThrow(); // Should not throw because handleIncomingChunk checks aborted flag
+    });
+
+    it('should destroy decompression stream on connection abort', async () => {
+      const gzip = promisify(zlib.gzip);
+      const originalData = 'test data for abort';
+      const compressedData = await gzip(Buffer.from(originalData));
+
+      setHeaders(
+        ['content-type', 'text/plain'],
+        ['content-encoding', 'gzip'],
+        ['content-length', compressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
+
+      // Get reference to decompression stream
+      const decompressionStream = req['decompressionStream'];
+      expect(decompressionStream).toBeDefined();
+
+      // Spy on destroy method
+      const destroySpy = jest.spyOn(decompressionStream!, 'destroy');
+
+      // Trigger abort
+      mockResponse.triggerAbort();
+
+      // Verify decompression stream was destroyed
+      expect(destroySpy).toHaveBeenCalled();
+      expect(req.isAborted).toBe(true);
     });
   });
 

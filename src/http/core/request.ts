@@ -899,6 +899,13 @@ export class UwsRequest extends Readable {
    * @private
    */
   private createDecompressionStream(encoding: string): Transform | null | false {
+    // Reject chained encodings (e.g., "gzip, deflate")
+    // RFC 7231 allows multiple Content-Encoding values, but this is extremely rare
+    // for request bodies and adds significant complexity. Explicitly reject with clear error.
+    if (encoding.includes(',')) {
+      return false; // Will trigger 415 Unsupported Media Type
+    }
+
     switch (encoding) {
       case 'gzip':
         return zlib.createGunzip();
@@ -1055,6 +1062,11 @@ export class UwsRequest extends Readable {
       this.aborted = true;
       this.abortError = new Error('Connection aborted');
       this.flushing = true;
+
+      // Clean up decompression stream if active
+      if (this.decompressionStream) {
+        this.decompressionStream.destroy();
+      }
 
       if (this.listenerCount('error') > 0) {
         this.destroy(this.abortError);

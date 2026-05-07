@@ -74,7 +74,7 @@ export default [
 
   // TypeScript test and mock files configuration (without type checking)
   {
-    files: ['**/*.spec.ts', '**/__mocks__/**/*.ts'],
+    files: ['**/*.spec.ts', '**/__mocks__/**/*.ts', 'test/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -97,6 +97,7 @@ export default [
       // Test-specific rules
       '@typescript-eslint/no-explicit-any': 'off', // Allow any in tests
       '@typescript-eslint/no-unused-expressions': 'off', // Allow in tests
+      '@typescript-eslint/ban-ts-comment': 'off', // Allow @ts-nocheck in tests
     },
   },
 ];
