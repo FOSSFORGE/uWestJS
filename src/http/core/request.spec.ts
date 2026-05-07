@@ -4,6 +4,8 @@ import { UwsRequest } from './request';
 import { toArrayBuffer, createMockResponse } from '../test-helpers';
 import * as signature from 'cookie-signature';
 import type { MultipartField } from '../body/multipart-handler';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
 
 describe('UwsRequest', () => {
   let mockUwsReq: jest.Mocked<HttpRequest>;
@@ -587,6 +589,261 @@ describe('UwsRequest', () => {
 
       // Should reject with size limit error
       await expect(bufferPromise).rejects.toThrow('Body size limit exceeded');
+    });
+
+    it('should fallback to close() when 413 response fails', async () => {
+      // Set content-length larger than limit
+      setHeaders(['content-length', '2000']);
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+
+      // Create a mock response that throws when trying to send 413
+      const mockResponse = {
+        ...createMockResponse(),
+        headersSent: false,
+        status: jest.fn().mockReturnValue({
+          send: jest.fn().mockImplementation(() => {
+            throw new Error('Connection already closed');
+          }),
+        }),
+      };
+
+      req._initBodyParser(1000, false, mockResponse as any);
+
+      // Should fallback to close() when send() fails
+      expect(mockUwsRes.close).toHaveBeenCalled();
+      expect(req.isAborted).toBe(true);
+    });
+
+    it('should use close() in fast abort mode instead of sending 413', async () => {
+      // Set content-length larger than limit
+      setHeaders(['content-length', '2000']);
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+
+      // Enable fast abort mode
+      req._initBodyParser(1000, true, mockResponse as any);
+
+      // Should close immediately in fast abort mode
+      expect(mockUwsRes.close).toHaveBeenCalled();
+      // In fast abort mode, we don't try to send a response
+      // The connection is just closed immediately
+    });
+  });
+
+  describe('decompression', () => {
+    it('should signal EOF to streaming consumers when decompression ends', async () => {
+      const gzip = promisify(zlib.gzip);
+
+      // Create compressed data
+      const originalData = 'Hello World from compressed stream';
+      const compressedData = await gzip(Buffer.from(originalData));
+
+      setHeaders(
+        ['content-type', 'text/plain'],
+        ['content-encoding', 'gzip'],
+        ['content-length', compressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
+
+      // Activate streaming mode by piping
+      const chunks: Buffer[] = [];
+      let streamEnded = false;
+
+      const writable = new Writable({
+        write(chunk: Buffer, encoding: string, callback: () => void) {
+          chunks.push(chunk);
+          callback();
+        },
+      });
+
+      writable.on('finish', () => {
+        streamEnded = true;
+      });
+
+      req.pipe(writable);
+
+      // Send compressed data
+      onDataCallback(toArrayBuffer(compressedData), true);
+
+      // Wait for decompression to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Verify stream received EOF signal
+      expect(streamEnded).toBe(true);
+      expect(Buffer.concat(chunks).toString()).toBe(originalData);
+    });
+
+    it('should handle decompression in buffering mode', async () => {
+      const gzip = promisify(zlib.gzip);
+
+      const originalData = '{"message":"compressed json"}';
+      const compressedData = await gzip(Buffer.from(originalData));
+
+      setHeaders(
+        ['content-type', 'application/json'],
+        ['content-encoding', 'gzip'],
+        ['content-length', compressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
+
+      // Use json() to activate buffering mode
+      const jsonPromise = req.json();
+
+      // Send compressed data
+      onDataCallback(toArrayBuffer(compressedData), true);
+
+      // Wait for decompression
+      const result = await jsonPromise;
+
+      expect(result).toEqual({ message: 'compressed json' });
+    });
+
+    it('should enforce size limit on decompressed data', async () => {
+      const gzip = promisify(zlib.gzip);
+
+      // Create data that's small when compressed but large when decompressed
+      const originalData = 'x'.repeat(1000); // 1000 bytes uncompressed
+      const compressedData = await gzip(Buffer.from(originalData));
+
+      setHeaders(
+        ['content-type', 'text/plain'],
+        ['content-encoding', 'gzip'],
+        ['content-length', compressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+
+      // Track if error was emitted
+      let errorEmitted = false;
+      req.on('error', () => {
+        errorEmitted = true;
+      });
+
+      // Set limit to 500 bytes (less than decompressed size)
+      req._initBodyParser(500, false, mockResponse as any);
+
+      // Send compressed data
+      onDataCallback(toArrayBuffer(compressedData), true);
+
+      // Wait for decompression to detect size limit
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Should have closed connection due to size limit
+      expect(mockUwsRes.close).toHaveBeenCalled();
+      expect(errorEmitted).toBe(true);
+    });
+
+    it('should handle backpressure from decompression stream', async () => {
+      const gzip = promisify(zlib.gzip);
+
+      // Create compressed data
+      const originalData = 'test data for backpressure';
+      const compressedData = await gzip(Buffer.from(originalData));
+
+      setHeaders(
+        ['content-type', 'text/plain'],
+        ['content-encoding', 'gzip'],
+        ['content-length', compressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
+
+      // Track pause/resume calls
+      let pauseCalled = false;
+      let resumeCalled = false;
+      const originalPause = mockUwsRes.pause;
+      const originalResume = mockUwsRes.resume;
+
+      mockUwsRes.pause = jest.fn(() => {
+        pauseCalled = true;
+        return originalPause.call(mockUwsRes);
+      });
+
+      mockUwsRes.resume = jest.fn(() => {
+        resumeCalled = true;
+        return originalResume.call(mockUwsRes);
+      });
+
+      // Mock the decompression stream write to return false (backpressure)
+      const decompressionStream = req['decompressionStream']!;
+      const originalWrite = decompressionStream.write.bind(decompressionStream);
+
+      let firstWrite = true;
+      decompressionStream.write = jest.fn((chunk: any, encoding?: any, callback?: any): boolean => {
+        if (firstWrite) {
+          firstWrite = false;
+          // Simulate backpressure - emit drain after a short delay
+          setImmediate(() => decompressionStream.emit('drain'));
+          return false; // Signal backpressure
+        }
+        return originalWrite(chunk, encoding, callback);
+      }) as any;
+
+      // Send first chunk (will trigger backpressure)
+      onDataCallback(toArrayBuffer(compressedData.slice(0, 10)), false);
+
+      // Wait for drain event to be processed
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Send remaining data
+      onDataCallback(toArrayBuffer(compressedData.slice(10)), true);
+
+      // Wait for decompression
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify pause was called when backpressure detected
+      expect(pauseCalled).toBe(true);
+      // Verify resume was called after drain
+      expect(resumeCalled).toBe(true);
+    });
+
+    it('should set aborted flag on decompression error to prevent writes to destroyed stream', async () => {
+      // Create invalid compressed data (will cause decompression error)
+      const invalidCompressedData = Buffer.from('not valid gzip data');
+
+      setHeaders(
+        ['content-type', 'text/plain'],
+        ['content-encoding', 'gzip'],
+        ['content-length', invalidCompressedData.length.toString()]
+      );
+
+      const req = new UwsRequest(mockUwsReq, mockUwsRes);
+      const mockResponse = createMockResponse();
+
+      // Track error
+      let errorEmitted = false;
+      req.on('error', () => {
+        errorEmitted = true;
+      });
+
+      req._initBodyParser(1024 * 1024, false, mockResponse as any);
+
+      // Send invalid compressed data
+      onDataCallback(toArrayBuffer(invalidCompressedData), false);
+
+      // Wait for decompression error
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify aborted flag is set
+      expect(req.isAborted).toBe(true);
+      expect(errorEmitted).toBe(true);
+
+      // Try to send more data - should be ignored due to aborted flag
+      const moreData = Buffer.from('more data');
+      expect(() => {
+        onDataCallback(toArrayBuffer(moreData), true);
+      }).not.toThrow(); // Should not throw because handleIncomingChunk checks aborted flag
     });
   });
 
