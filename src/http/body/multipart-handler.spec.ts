@@ -285,8 +285,6 @@ describe('MultipartFormHandler', () => {
       // Verify pause/resume were called for backpressure
       expect(mockUwsRes.pause).toHaveBeenCalled();
       expect(mockUwsRes.resume).toHaveBeenCalled();
-
-      jest.useRealTimers();
     });
 
     it('should handle synchronous handlers without backpressure', async () => {
