@@ -134,10 +134,9 @@ export class GuardExecutor {
         const args = [context.client, context.data];
         return args[index];
       },
-      switchToRpc: () => ({
-        getContext: () => context.client,
-        getData: () => context.data,
-      }),
+      switchToRpc: () => {
+        throw new Error('RPC context not available in WebSocket');
+      },
       switchToHttp: () => {
         throw new Error('HTTP context not available in WebSocket');
       },
