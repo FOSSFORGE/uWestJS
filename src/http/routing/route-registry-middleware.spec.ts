@@ -250,10 +250,15 @@ describe('RouteRegistry - Middleware Integration', () => {
         capturedBody = await req.body;
       });
 
+      // Compute content-length dynamically from the body bytes so the header
+      // value cannot drift away from the payload (issue #83).
+      const bodyData = JSON.stringify({ number: 5 });
+      const contentLength = String(Buffer.byteLength(bodyData));
+
       // Mock content-type header and content-length
       mockUwsReq.forEach = jest.fn((callback) => {
         callback('content-type', 'application/json');
-        callback('content-length', '13');
+        callback('content-length', contentLength);
       });
 
       // Create response with callback tracking
@@ -269,7 +274,6 @@ describe('RouteRegistry - Middleware Integration', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       // Simulate body data being received
-      const bodyData = JSON.stringify({ number: 5 });
       const arrayBuffer = toArrayBuffer(Buffer.from(bodyData));
 
       // Send the body data
@@ -392,10 +396,15 @@ describe('RouteRegistry - Middleware Integration', () => {
 
       const handler = jest.fn();
 
+      // Compute content-length dynamically from the body bytes so the header
+      // value cannot drift away from the payload (issue #83).
+      const bodyData = JSON.stringify({ name: 'John', age: 30 });
+      const contentLength = String(Buffer.byteLength(bodyData));
+
       // Mock content-type header and content-length
       mockUwsReq.forEach = jest.fn((callback) => {
         callback('content-type', 'application/json');
-        callback('content-length', '27');
+        callback('content-length', contentLength);
       });
 
       // Create response with callback tracking
@@ -418,7 +427,6 @@ describe('RouteRegistry - Middleware Integration', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       // Simulate body data
-      const bodyData = JSON.stringify({ name: 'John', age: 30 });
       const arrayBuffer = toArrayBuffer(Buffer.from(bodyData));
 
       callbacks.onData!(arrayBuffer, true);
