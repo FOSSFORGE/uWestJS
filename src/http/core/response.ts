@@ -1,10 +1,12 @@
 import type { HttpResponse } from 'uWebSockets.js';
 import { STATUS_CODES } from 'http';
-import { Writable } from 'stream';
+import { Writable, Readable, Transform } from 'stream';
 import * as cookie from 'cookie';
 import * as signature from 'cookie-signature';
 import * as mime from 'mime-types';
 import contentDisposition = require('content-disposition');
+import type { UwsRequest } from './request';
+import type { CompressionHandler } from '../handlers/compression/compression-handler';
 
 /**
  * High watermark for response buffering (128KB)
@@ -66,13 +68,13 @@ export class UwsResponse extends Writable {
   private pendingChunks: Buffer[] = [];
   private pendingSize = 0;
   private lastFlushTime = 0;
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global type from @types/node
-  private flushTimeout?: NodeJS.Timeout;
+
+  private flushTimeout?: ReturnType<typeof setTimeout>;
   private readonly FLUSH_INTERVAL = 50; // 50ms
 
   // Active readable stream being processed by stream()
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global namespace from @types/node
-  private activeStream?: NodeJS.ReadableStream;
+
+  private activeStream?: Readable;
 
   // Pending _final callback from Writable stream
   // Stored when _final() is called and invoked when response truly finishes
@@ -86,12 +88,32 @@ export class UwsResponse extends Writable {
   private abortCallbacks: Array<() => void> = [];
   private abortHandlerRegistered = false;
 
+  // Compression support
+  private req?: UwsRequest;
+  private compressionHandler?: CompressionHandler;
+
   constructor(private readonly uwsRes: HttpResponse) {
     // Initialize Writable stream with platform-agnostic interface
     super({
       highWaterMark: HIGH_WATERMARK,
       // Note: We don't pass write/writev here because we override _write/_writev methods
     });
+  }
+
+  /**
+   * Bind the request object for compression negotiation
+   * @internal
+   */
+  bindRequest(req: UwsRequest): void {
+    this.req = req;
+  }
+
+  /**
+   * Set the compression handler for automatic response compression
+   * @internal
+   */
+  setCompressionHandler(handler: CompressionHandler): void {
+    this.compressionHandler = handler;
   }
 
   /**
@@ -793,6 +815,8 @@ export class UwsResponse extends Writable {
       this.pendingChunks = [];
       this.pendingSize = 0;
       this.lastFlushTime = Date.now();
+      // uWS implicitly sends headers on the first write()
+      this._headersSent = true;
     }
 
     return writeSucceeded;
@@ -826,21 +850,113 @@ export class UwsResponse extends Writable {
    * await res.stream(dataStream);
    * ```
    */
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global namespace from @types/node
-  async stream(readable: NodeJS.ReadableStream, totalSize?: number): Promise<void> {
+
+  async stream(readable: Readable, totalSize?: number): Promise<void> {
     if (this.finished || this.aborted) {
       return;
     }
 
-    // Flush any pending chunks from write() calls
+    // Check compression BEFORE flushing chunks so pending writes can be
+    // routed through the compression stream instead of sent raw.
+    const compressStream =
+      this.compressionHandler && this.req && !this._headersSent
+        ? this.compressionHandler.createCompressionStream(this.req, this)
+        : null;
+
+    if (compressStream) {
+      // Feed any pending write() chunks into the compression stream
+      if (this.pendingChunks.length > 0) {
+        const buffer = Buffer.concat(this.pendingChunks);
+        this.pendingChunks = [];
+        this.pendingSize = 0;
+        if (this.flushTimeout) {
+          clearTimeout(this.flushTimeout);
+          this.flushTimeout = undefined;
+        }
+        const canContinue = compressStream.write(buffer);
+        if (!canContinue) {
+          // Wait for drain before starting the pipe so backpressure is respected
+          await new Promise<void>((resolve, reject) => {
+            const onDrain = () => {
+              cleanup();
+              resolve();
+            };
+            const onError = (err: Error) => {
+              cleanup();
+              reject(err);
+            };
+            const cleanup = () => {
+              compressStream.off('drain', onDrain);
+              compressStream.off('error', onError);
+            };
+            compressStream.once('drain', onDrain);
+            compressStream.once('error', onError);
+          });
+        }
+      }
+
+      return this._streamCompressed(readable, compressStream);
+    }
+
+    // No compression — flush normally and stream uncompressed
     this.atomic(() => {
       this.flushChunks();
+    });
+    await this._streamFromReadable(readable, totalSize);
+  }
 
-      // Note: When totalSize is provided, we use tryEnd() which automatically
-      // manages Content-Length header. Don't set it manually to avoid duplicates.
-      // Headers will be sent by streamChunk() on first write
+  /**
+   * Stream a readable through a compression transform and then to the response
+   */
+  private _streamCompressed(readable: Readable, compressStream: Transform): Promise<void> {
+    this.activeStream = readable;
+
+    // Ensure compressStream is also torn down if the client aborts mid-stream
+    this._onAbort(() => {
+      if (!compressStream.destroyed) {
+        compressStream.destroy();
+      }
     });
 
+    return new Promise<void>((resolve, reject) => {
+      readable.pipe(compressStream).pipe(this);
+
+      const onFinish = () => {
+        cleanup();
+        this.activeStream = undefined;
+        resolve();
+      };
+
+      const onError = (err: Error) => {
+        cleanup();
+        if (!readable.destroyed) {
+          readable.destroy();
+        }
+        if (!compressStream.destroyed) {
+          compressStream.destroy();
+        }
+        this.activeStream = undefined;
+        reject(err);
+      };
+
+      const cleanup = () => {
+        this.off('finish', onFinish);
+        this.off('error', onError);
+        compressStream.off('error', onError);
+        readable.off('error', onError);
+      };
+
+      this.once('finish', onFinish);
+      this.once('error', onError);
+      compressStream.once('error', onError);
+      readable.once('error', onError);
+    });
+  }
+
+  /**
+   * Stream a readable to the response with backpressure handling
+   */
+  private async _streamFromReadable(readable: Readable, totalSize?: number): Promise<void> {
     // Register this stream so the constructor's abort handler can destroy it
     this.activeStream = readable;
 
@@ -935,8 +1051,8 @@ export class UwsResponse extends Writable {
   /**
    * Check if stream has ended
    */
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global namespace from @types/node
-  private isStreamEnded(readable: NodeJS.ReadableStream): boolean {
+
+  private isStreamEnded(readable: Readable): boolean {
     return (
       ('readableEnded' in readable && readable.readableEnded === true) ||
       ('destroyed' in readable && readable.destroyed === true)
@@ -946,8 +1062,8 @@ export class UwsResponse extends Writable {
   /**
    * Read a chunk from the stream
    */
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global namespace from @types/node
-  private readChunk(readable: NodeJS.ReadableStream): Buffer | null {
+
+  private readChunk(readable: Readable): Buffer | null {
     if ('read' in readable && typeof readable.read === 'function') {
       const chunk = readable.read();
       return chunk ? (Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) : null;
@@ -1005,6 +1121,9 @@ export class UwsResponse extends Writable {
           sent = this.uwsRes.write(buffer);
         }
 
+        // uWS implicitly sends headers on the first write/tryEnd
+        this._headersSent = true;
+
         if (sent) {
           // Chunk fully sent
           resolve();
@@ -1030,6 +1149,9 @@ export class UwsResponse extends Writable {
             } else {
               flushed = this.uwsRes.write(remaining);
             }
+
+            // uWS implicitly sends headers on the first write/tryEnd
+            this._headersSent = true;
 
             if (flushed) {
               resolve();
@@ -1076,8 +1198,8 @@ export class UwsResponse extends Writable {
    * res.pipeFrom(fileStream);
    * ```
    */
-  // eslint-disable-next-line no-undef -- NodeJS is a TypeScript global namespace from @types/node
-  pipeFrom(source: NodeJS.ReadableStream): this {
+
+  pipeFrom(source: Readable): this {
     // Use stream() which has proper backpressure handling and error handling
     // stream() returns a Promise, but pipeFrom() should be synchronous for Express compatibility
     this.stream(source).catch((error) => {
@@ -1153,31 +1275,60 @@ export class UwsResponse extends Writable {
       throw new Error('Response already being sent');
     }
 
+    // Serialize body outside atomic so compression can inspect/modify headers
+    let finalBody: string | Buffer | undefined;
+
+    if (body === null || body === undefined) {
+      finalBody = undefined;
+    } else if (typeof body === 'string' || Buffer.isBuffer(body)) {
+      finalBody = body;
+    } else if (typeof body === 'object') {
+      if (!this._headersSent && !this.hasHeader('content-type')) {
+        this.setHeader('content-type', 'application/json; charset=utf-8');
+      }
+      finalBody = JSON.stringify(body);
+    } else {
+      finalBody = String(body);
+    }
+
     this.sending = true;
+
+    // Apply compression if configured and body is present
+    if (this.compressionHandler && this.req && finalBody) {
+      const bodyBuffer = Buffer.isBuffer(finalBody) ? finalBody : Buffer.from(finalBody);
+      this.compressionHandler
+        .compressBuffer(this.req, this, bodyBuffer)
+        .then((compressed) => this._sendInternal(compressed))
+        .catch(() => {
+          this.sending = false;
+          if (this.finished || this.aborted || this._headersSent) {
+            return;
+          }
+          // Drop headers the compression handler may have set so the
+          // plaintext fallback isn't tagged with a Content-Encoding
+          this.removeHeader('content-encoding');
+          this.removeHeader('content-length');
+          this.status(500);
+          this._sendInternal('Internal Server Error');
+        });
+    } else {
+      this._sendInternal(finalBody);
+    }
+  }
+
+  /**
+   * Internal method to perform the actual uWS send after optional compression
+   */
+  private _sendInternal(body: string | Buffer | undefined): void {
+    if (this.aborted || this.finished) {
+      this.sending = false;
+      return;
+    }
 
     this.atomic(() => {
       try {
         // Flush any pending chunks first and check for backpressure
         const flushed = this.flushChunks();
-
-        let finalBody: string | Buffer | undefined;
-
-        // Handle null/undefined
-        if (body === null || body === undefined) {
-          finalBody = undefined;
-        } else if (typeof body === 'string' || Buffer.isBuffer(body)) {
-          // String or Buffer - send as-is
-          finalBody = body;
-        } else if (typeof body === 'object') {
-          // Plain object/array - serialize as JSON
-          if (!this._headersSent && !this.hasHeader('content-type')) {
-            this.setHeader('content-type', 'application/json; charset=utf-8');
-          }
-          finalBody = JSON.stringify(body);
-        } else {
-          // Other types (shouldn't happen with our type signature, but be safe)
-          finalBody = String(body);
-        }
 
         // Write headers if not already sent
         if (!this._headersSent) {
@@ -1198,23 +1349,13 @@ export class UwsResponse extends Writable {
 
             if (retryFlushed) {
               // Successfully flushed, now send the final body
-              if (finalBody !== undefined) {
-                this.uwsRes.end(finalBody);
+              if (body !== undefined) {
+                this.uwsRes.end(body);
               } else {
                 this.uwsRes.end();
               }
 
-              this.finished = true;
-              this.sending = false;
-
-              // Invoke pending _final callback if present
-              if (this.pendingFinalCallback) {
-                const callback = this.pendingFinalCallback;
-                this.pendingFinalCallback = undefined;
-                callback();
-              }
-
-              this.emit('finish');
+              this._finishSend();
 
               return true; // Done, remove handler
             }
@@ -1224,29 +1365,36 @@ export class UwsResponse extends Writable {
           });
         } else {
           // No backpressure, send immediately
-          if (finalBody !== undefined) {
-            this.uwsRes.end(finalBody);
+          if (body !== undefined) {
+            this.uwsRes.end(body);
           } else {
             this.uwsRes.end();
           }
 
-          this.finished = true;
-          this.sending = false;
-
-          // Invoke pending _final callback if present
-          if (this.pendingFinalCallback) {
-            const callback = this.pendingFinalCallback;
-            this.pendingFinalCallback = undefined;
-            callback();
-          }
-
-          this.emit('finish');
+          this._finishSend();
         }
       } catch (error) {
         this.sending = false;
         throw error;
       }
     });
+  }
+
+  /**
+   * Finalize send state after body is written to uWS
+   */
+  private _finishSend(): void {
+    this.finished = true;
+    this.sending = false;
+
+    // Invoke pending _final callback if present
+    if (this.pendingFinalCallback) {
+      const callback = this.pendingFinalCallback;
+      this.pendingFinalCallback = undefined;
+      callback();
+    }
+
+    this.emit('finish');
   }
 
   /**

@@ -14,6 +14,7 @@ import type { PlatformOptions, CorsOptions, Logger } from '../../shared/interfac
 import type { ModuleRef } from '../../shared/di';
 import type { RouteMetadata } from '../routing/route-registry';
 import type { StaticFileOptions } from '../handlers/static/static-file-handler';
+import type { CompressionOptions } from '../handlers/compression/compression-handler';
 
 /**
  * Resolved platform options with defaults applied
@@ -51,6 +52,7 @@ type ResolvedPlatformOptions = {
   passphrase?: string;
   dh_params_file_name?: string;
   ssl_prefer_low_memory_usage?: boolean;
+  compress?: CompressionOptions;
 };
 
 /**

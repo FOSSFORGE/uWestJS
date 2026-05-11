@@ -6,6 +6,7 @@ import { UwsResponse } from '../core/response';
 import { HttpExecutionContext } from '../core/context';
 import type { PlatformOptions, Logger } from '../../shared/interfaces';
 import type { CorsHandler } from '../handlers/cors/cors-handler';
+import { CompressionHandler } from '../handlers/compression/compression-handler';
 import type {
   CanActivate,
   PipeTransform,
@@ -176,6 +177,8 @@ export class RouteRegistry {
   private readonly moduleRef: ModuleRef;
   // CORS handler (optional)
   private corsHandler?: CorsHandler;
+  // Compression handler (optional)
+  private compressionHandler?: CompressionHandler;
 
   constructor(
     private readonly uwsApp: uWS.TemplatedApp,
@@ -189,6 +192,11 @@ export class RouteRegistry {
     // Use provided ModuleRef (full NestJS DI) or fall back to DefaultModuleRef
     // (no-arg constructors only — matches existing WebSocket executor behavior)
     this.moduleRef = options.moduleRef ?? new DefaultModuleRef();
+
+    // Initialize compression handler if configured
+    if (options.compress) {
+      this.compressionHandler = new CompressionHandler(options.compress);
+    }
   }
 
   /**
@@ -259,6 +267,9 @@ export class RouteRegistry {
 
           // Create response wrapper early to attach abort handler
           const res = new UwsResponse(uwsRes);
+          if (this.compressionHandler) {
+            res.setCompressionHandler(this.compressionHandler);
+          }
 
           // Attach abort handler immediately to satisfy uWS requirement
           res._onAbort(() => {
@@ -275,6 +286,7 @@ export class RouteRegistry {
 
               // Create request wrapper
               const req = new UwsRequest(uwsReq, uwsRes, []);
+              res.bindRequest(req);
 
               // Set extracted parameters using proper API
               req._setParams(matches);
@@ -297,6 +309,7 @@ export class RouteRegistry {
           // If no route matched, send 404
           if (!matched) {
             const req = new UwsRequest(uwsReq, uwsRes, []);
+            res.bindRequest(req);
 
             // Handle CORS for unmatched routes (including preflight)
             if (this.corsHandler && (await this.corsHandler.handle(req, res))) {
@@ -348,12 +361,16 @@ export class RouteRegistry {
           // Create request/response wrappers
           const req = new UwsRequest(uwsReq, uwsRes, paramNames);
           const res = new UwsResponse(uwsRes);
-
+          if (this.compressionHandler) {
+            res.setCompressionHandler(this.compressionHandler);
+          }
           // Attach abort handler immediately to satisfy uWS requirement
           // This must be done before any async operations
           res._onAbort(() => {
             // Connection was aborted, nothing to do
           });
+
+          res.bindRequest(req);
 
           // Initialize body parser with configured size limit and fast abort option
           req._initBodyParser(
@@ -905,11 +922,15 @@ export class RouteRegistry {
       this.uwsApp.options('/*', async (uwsRes: uWS.HttpResponse, uwsReq: uWS.HttpRequest) => {
         const req = new UwsRequest(uwsReq, uwsRes, []);
         const res = new UwsResponse(uwsRes);
-
+        if (this.compressionHandler) {
+          res.setCompressionHandler(this.compressionHandler);
+        }
         // Attach abort handler immediately to satisfy uWS requirement
         res._onAbort(() => {
           // Connection was aborted, nothing to do
         });
+
+        res.bindRequest(req);
 
         // Use this.corsHandler to pick up the latest handler
         if (this.corsHandler && (await this.corsHandler.handle(req, res))) {

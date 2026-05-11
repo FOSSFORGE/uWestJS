@@ -1,4 +1,5 @@
 import { Logger } from '../../shared/interfaces';
+import type { CompressionOptions } from '../handlers/compression/compression-handler';
 
 /**
  * HTTP-specific options for the uWS platform adapter
@@ -143,4 +144,22 @@ export interface HttpOptions {
    * ```
    */
   fastAbort?: boolean;
+
+  /**
+   * Response compression configuration
+   *
+   * When provided, enables automatic gzip/deflate/brotli compression
+   * for eligible responses based on Accept-Encoding negotiation.
+   *
+   * @default undefined (compression disabled)
+   * @example
+   * ```typescript
+   * // Enable gzip with 1KB threshold
+   * compress: { threshold: 1024 }
+   *
+   * // Enable gzip + brotli with custom level
+   * compress: { threshold: 512, level: 9, brotli: true }
+   * ```
+   */
+  compress?: CompressionOptions;
 }
