@@ -417,17 +417,25 @@ export class UwsPlatformAdapter extends AbstractHttpAdapter {
   }
 
   /**
-   * Register a route with metadata (guards, pipes, filters)
+   * Add a route directly with middleware metadata (advanced usage).
    *
-   * Used by NestJS to register routes with their associated middleware metadata.
-   * The metadata is passed to the route registry which executes the middleware pipeline.
+   * This is NOT called by NestJS. For standard NestJS controllers,
+   * use @Controller() and @Get() / @Post() etc. - NestJS handles
+   * guards/pipes/filters automatically.
+   *
+   * Use this method when you need direct control over route registration
+   * outside of NestJS's standard controller pipeline. The metadata is
+   * executed by the internal RouteRegistry pipeline.
+   *
+   * @example
+   * ```typescript
+   * adapter.addRoute('GET', '/health', handler, {
+   *   guards: [AuthGuard],
+   *   filters: [HttpExceptionFilter],
+   * });
+   * ```
    */
-  registerRouteWithMetadata(
-    method: string,
-    path: string,
-    handler: Function,
-    metadata: RouteMetadata
-  ): void {
+  addRoute(method: string, path: string, handler: Function, metadata?: RouteMetadata): void {
     this.routeRegistry.register(method.toUpperCase(), path, handler as any, metadata);
   }
 

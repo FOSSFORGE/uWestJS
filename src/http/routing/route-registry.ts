@@ -677,8 +677,12 @@ export class RouteRegistry {
     return typeof filter === 'function' ? this.moduleRef.get(filter) : filter;
   }
 
-  private getMiddlewareName(middleware: Type<unknown> | object): string {
-    return typeof middleware === 'function' ? middleware.name : middleware.constructor.name;
+  private getMiddlewareName(middleware: Type<unknown> | Record<string, any>): string {
+    if (!middleware) return 'UnknownMiddleware';
+    if (typeof middleware === 'function') {
+      return middleware.name;
+    }
+    return middleware.constructor?.name || 'AnonymousMiddleware';
   }
 
   /**

@@ -30,6 +30,31 @@ uWestJS provides full routing support with NestJS decorators:
 
 ---
 
+## Usage Models
+
+uWestJS supports two distinct routing usage models for HTTP, similar to its WebSocket implementation:
+
+### 1. NestJS Controller Pipeline (Standard)
+This is the standard approach using NestJS decorators (`@Controller()`, `@Get()`, etc.). The NestJS framework automatically parses your classes, configures the route registry, and wraps your methods in its internal execution pipeline. This is the recommended approach for almost all applications.
+
+### 2. Direct Registry Registration (Advanced)
+For advanced use cases requiring programmatic route creation outside of NestJS controllers, uWestJS provides an adapter API via `UwsPlatformAdapter.addRoute()`. This allows you to manually register routes while still executing standard NestJS guards, pipes, and filters.
+
+```typescript
+// Advanced usage: Direct registration
+const adapter = app.getHttpAdapter() as UwsPlatformAdapter;
+
+adapter.addRoute('GET', '/health', (req, res) => {
+  res.send({ status: 'ok' });
+}, {
+  guards: [CustomAuthGuard],
+  pipes: [CustomValidationPipe],
+  filters: [CustomExceptionFilter]
+});
+```
+
+---
+
 ## Route Registration
 
 ### Basic Routes
