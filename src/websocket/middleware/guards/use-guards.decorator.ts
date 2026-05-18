@@ -38,10 +38,11 @@ export function UseGuards(
     propertyKey?: string | symbol,
     descriptor?: PropertyDescriptor
   ): void | PropertyDescriptor => {
+    // For static methods, target is the constructor itself; for instance methods, it's the prototype
+    const metadataTarget = typeof target === 'function' ? target : (target as object).constructor;
+
     if (propertyKey) {
       // Method decorator - merge with existing guards and deduplicate
-      // For static methods, target is the constructor itself; for instance methods, it's the prototype
-      const metadataTarget = typeof target === 'function' ? target : (target as object).constructor;
       const existingGuards: (Type<CanActivate> | CanActivate)[] =
         Reflect.getMetadata(GUARDS_METADATA, metadataTarget, propertyKey) || [];
 
@@ -55,9 +56,13 @@ export function UseGuards(
     } else {
       // Class decorator - merge with existing guards and deduplicate
       const existingGuards: (Type<CanActivate> | CanActivate)[] =
-        Reflect.getMetadata(GUARDS_METADATA, target) || [];
+        Reflect.getMetadata(GUARDS_METADATA, metadataTarget) || [];
 
-      Reflect.defineMetadata(GUARDS_METADATA, [...new Set([...existingGuards, ...guards])], target);
+      Reflect.defineMetadata(
+        GUARDS_METADATA,
+        [...new Set([...existingGuards, ...guards])],
+        metadataTarget
+      );
       return;
     }
   };

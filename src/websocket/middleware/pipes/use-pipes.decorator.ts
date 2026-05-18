@@ -78,9 +78,13 @@ export function UsePipes(
     } else {
       // Class decorator - merge with existing pipes and deduplicate
       const existingPipes: (Type<PipeTransform> | PipeTransform)[] =
-        Reflect.getMetadata(PIPES_METADATA, target) || [];
+        Reflect.getMetadata(PIPES_METADATA, metadataTarget) || [];
 
-      Reflect.defineMetadata(PIPES_METADATA, [...new Set([...existingPipes, ...pipes])], target);
+      Reflect.defineMetadata(
+        PIPES_METADATA,
+        [...new Set([...existingPipes, ...pipes])],
+        metadataTarget
+      );
     }
   };
 

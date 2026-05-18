@@ -38,10 +38,11 @@ export function UseFilters(
     propertyKey?: string | symbol,
     descriptor?: PropertyDescriptor
   ): void | PropertyDescriptor => {
+    // For static methods, target is the constructor itself; for instance methods, it's the prototype
+    const metadataTarget = typeof target === 'function' ? target : (target as object).constructor;
+
     if (propertyKey) {
       // Method decorator - merge with existing filters and deduplicate
-      // For static methods, target is the constructor itself; for instance methods, it's the prototype
-      const metadataTarget = typeof target === 'function' ? target : (target as object).constructor;
       const existingFilters: (Type<ExceptionFilter> | ExceptionFilter)[] =
         Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, metadataTarget, propertyKey) || [];
 
@@ -55,12 +56,12 @@ export function UseFilters(
     } else {
       // Class decorator - merge with existing filters and deduplicate
       const existingFilters: (Type<ExceptionFilter> | ExceptionFilter)[] =
-        Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, target) || [];
+        Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, metadataTarget) || [];
 
       Reflect.defineMetadata(
         EXCEPTION_FILTERS_METADATA,
         [...new Set([...existingFilters, ...filters])],
-        target
+        metadataTarget
       );
       return;
     }
