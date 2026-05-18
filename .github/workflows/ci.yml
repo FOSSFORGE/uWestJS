@@ -29,8 +29,11 @@ jobs:
       - name: Check eslint
         run: npm run lint
       
-      - name: Run tests
-        run: npm test
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        run: npm run test:integration
       
       - name: Build package
         run: npm run build
