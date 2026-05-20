@@ -1,6 +1,6 @@
 {
   "name": "uwestjs",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "High-performance platform adapter (HTTP & WebSocket) for NestJS using uWebSockets.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
