@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] 
 
+## [2.0.1] - 2026-05-20
+
+### Fixed
+- trailing slash routes return 404 #182
+
 ## [2.0.0] - 2026-05-20
 
 ### Added
@@ -149,6 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exception handling with WsException class
 - Broadcast operator with room targeting and client exclusion
 
-[Unreleased]: https://github.com/FOSSFORGE/uWestJS/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/FOSSFORGE/uWestJS/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/FOSSFORGE/uWestJS/compare/v2.0.0...v2.0.1
+[2.0.0]: https://github.com/FOSSFORGE/uWestJS/compare/v1.0.1...v2.0.0
 [1.0.1]: https://github.com/FOSSFORGE/uWestJS/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/FOSSFORGE/uWestJS/releases/tag/v1.0.0

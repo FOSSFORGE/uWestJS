@@ -97,7 +97,7 @@ describe('RouteRegistry', () => {
       registry.register('GET', '/items/:id', getHandler);
       registry.register('HEAD', '/items/:id', headHandler);
 
-      expect(mockUwsApp.head).toHaveBeenCalledTimes(1);
+      expect(mockUwsApp.head).toHaveBeenCalledTimes(2);
 
       const route = registeredRoutes.get('HEAD:/items/:id');
       expect(route).toBeDefined();
