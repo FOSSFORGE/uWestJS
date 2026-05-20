@@ -16,7 +16,7 @@ uWestJS is a high-performance platform adapter for NestJS, powered by [uWebSocke
 
 uWebSockets.js is one of the fastest HTTP and WebSocket implementations available, offering:
 
-- **Up to 10x faster** than Express and traditional WebSocket libraries in benchmarks
+- **Up to 4-5x faster** than Express and Fastify
 - **Lower memory footprint** for handling thousands of concurrent connections
 - **Native backpressure handling** to prevent memory issues under load
 - **Built-in compression** support for reduced bandwidth usage
@@ -51,7 +51,7 @@ uWestJS brings this performance to NestJS without requiring you to change your e
 ## Features
 
 ### HTTP Features
-- **High Performance** - Up to 10x faster than Express for HTTP requests → [Server Documentation](./docs/http/Server.md)
+- **High Performance** - Up to 4-5x faster than Express and 2-2.5x than Fastify for HTTP requests → [Server Documentation](./docs/http/Server.md)
 - **Request Handling** - Full Express-compatible request API with body parsing, headers, cookies, and more → [Request API](./docs/http/Request.md)
 - **Response Handling** - Comprehensive response methods including streaming, compression, and caching → [Response API](./docs/http/Response.md)
 - **Routing** - Path parameters, wildcards, and route registration → [Routing Guide](./docs/http/Routing.md)
@@ -305,8 +305,8 @@ See [Adapter Documentation](./docs/websocket/Adapter.md) for detailed migration 
 
 uWestJS provides significant performance improvements:
 
-- **HTTP**: Up to 10x faster than Express
-- **WebSocket**: Up to 10x faster than Socket.IO
+- **HTTP**: Up to 4-5x faster than Express and 2-2.5x than Fastify
+- **WebSocket**: Much faster than traditional JS based Socket.IO
 - **Memory**: Lower memory footprint for concurrent connections
 - **Backpressure**: Automatic handling prevents memory issues
 - **Compression**: Built-in support reduces bandwidth usage
@@ -413,7 +413,7 @@ Vikram Aditya
 
 ## Organization
 
-Part of [FOSS FORGE](https://github.com/FOSSFORGE) - Open Source Tools & Libraries
+Part of [FOSS FORGE](https://github.com/FOSSFORGE)
 
 ## Links
 
