@@ -85,6 +85,7 @@ export interface RouteInfo {
   handler: RouteHandler; // Store the handler
   metadata?: RouteMetadata; // Middleware metadata
   implicitHead?: boolean; // Auto-registered HEAD fallback for GET routes
+  trailingSlash?: boolean; // Auto-registered trailing-slash variant for Express compatibility
 }
 
 /**
@@ -252,6 +253,11 @@ export class RouteRegistry {
         };
 
         this.routes.set(routeKey, routeInfo);
+        // Also update trailing-slash variant if it exists
+        const slashRouteKey = `${normalizedMethod}:${path}/`;
+        if (this.routes.has(slashRouteKey)) {
+          this.routes.set(slashRouteKey, { ...routeInfo, trailingSlash: true });
+        }
         if (isComplex) {
           const staticPrefix = this.extractStaticPrefix(path);
           const registrationPath = staticPrefix ? `${staticPrefix}/*` : '/*';
@@ -385,11 +391,9 @@ export class RouteRegistry {
       this.complexRoutesByWildcard.get(wildcardKey)!.push(routeInfo);
     } else {
       // Simple route - use native uWS routing
-      uwsMethodFn.call(
-        this.uwsApp,
-        uwsPath,
-        async (uwsRes: uWS.HttpResponse, uwsReq: uWS.HttpRequest) => {
-          const activeRoute = this.routes.get(routeKey)!;
+      const createHandler =
+        (key: string) => async (uwsRes: uWS.HttpResponse, uwsReq: uWS.HttpRequest) => {
+          const activeRoute = this.routes.get(key)!;
 
           // Create request/response wrappers
           const req = new UwsRequest(uwsReq, uwsRes, paramNames);
@@ -414,8 +418,26 @@ export class RouteRegistry {
 
           // Execute handler with error handling
           await this.executeHandler(activeRoute.handler, req, res, activeRoute.metadata);
+        };
+
+      uwsMethodFn.call(this.uwsApp, uwsPath, createHandler(routeKey));
+
+      // Also register trailing-slash variant for Express compatibility
+      // (e.g. /api and /api/ should both match the same route)
+      if (!uwsPath.endsWith('/') && uwsPath !== '/') {
+        const slashRouteKey = `${normalizedMethod}:${path}/`;
+        if (!this.routes.has(slashRouteKey)) {
+          this.routes.set(slashRouteKey, { ...routeInfo, trailingSlash: true });
+          uwsMethodFn.call(this.uwsApp, uwsPath + '/', createHandler(slashRouteKey));
         }
-      );
+      } else if (uwsPath.endsWith('/') && uwsPath !== '/') {
+        const nonTrailingPath = uwsPath.slice(0, -1);
+        const companionKey = `${normalizedMethod}:${path.slice(0, -1)}`;
+        if (!this.routes.has(companionKey)) {
+          this.routes.set(companionKey, { ...routeInfo, trailingSlash: false });
+          uwsMethodFn.call(this.uwsApp, nonTrailingPath, createHandler(companionKey));
+        }
+      }
     }
 
     if (normalizedMethod === 'GET' && !implicitHead) {
@@ -935,7 +957,11 @@ export class RouteRegistry {
    * @returns Map of route keys to route information
    */
   getRoutes(): Map<string, RouteInfo> {
-    return new Map([...this.routes].filter(([, route]) => !route.implicitHead));
+    return new Map(
+      [...this.routes].filter(
+        ([, route]) => !route.implicitHead && route.trailingSlash === undefined
+      )
+    );
   }
 
   /**
@@ -957,7 +983,9 @@ export class RouteRegistry {
    * @returns Number of registered routes
    */
   getRouteCount(): number {
-    return [...this.routes.values()].filter((route) => !route.implicitHead).length;
+    return [...this.routes.values()].filter(
+      (route) => !route.implicitHead && route.trailingSlash === undefined
+    ).length;
   }
 
   private replaceComplexRoute(wildcardKey: string, routeInfo: RouteInfo): void {
