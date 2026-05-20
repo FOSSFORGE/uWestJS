@@ -53,7 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix: misleading example in etagFn documentation #91
 - fix(cors): reject preflight immediately if any requested header is disallowed #88
 - fix(multipart): prevent options.headers from overriding request headers #75
-- 
 - Upgrade NodeJS engine to 24<=25 and upgrade @types/node to 24 #44
 - fix(http): resolve instance handling #128 and misleading jsDOC issue #145
 - Fix: Skip benchmarks for Dependabot PRs #50
@@ -63,7 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove unsafe abort handler fallback in _initBodyParser #70
 - test(routing): compute content-length dynamically in middleware specs #109
 - Fix: Refactor streaming mode test to use modern async/await pattern #102
-- 
 - Fix #94 Return proper status code for large responses and #95 Support decompression #97
 - Fix Content-Length piping RFC violation + optimize chunked mode syscalls #107
 - docs: Use compress for HttpOptions in Compression.md #125
