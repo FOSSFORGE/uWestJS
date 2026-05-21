@@ -42,7 +42,9 @@ export function UseFilters(
     const metadataTarget = typeof target === 'function' ? target : (target as object).constructor;
 
     if (propertyKey) {
-      // Method decorator - merge with existing filters and deduplicate
+      // Method decorator - merge with existing filters and deduplicate by reference equality
+      // Different instances of the same filter class are preserved
+      // Only identical object references are removed
       const existingFilters: (Type<ExceptionFilter> | ExceptionFilter)[] =
         Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, metadataTarget, propertyKey) || [];
 
@@ -54,7 +56,9 @@ export function UseFilters(
       );
       return descriptor;
     } else {
-      // Class decorator - merge with existing filters and deduplicate
+      // Class decorator - merge with existing filters and deduplicate by reference equality
+      // Different instances of the same filter class are preserved
+      // Only identical object references are removed
       const existingFilters: (Type<ExceptionFilter> | ExceptionFilter)[] =
         Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, metadataTarget) || [];
 
