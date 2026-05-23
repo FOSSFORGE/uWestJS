@@ -429,6 +429,9 @@ export class CompressionHandler {
    */
   private parseAcceptEncoding(acceptEncoding: string): string[] {
     const encodings: Array<{ encoding: string; quality: number; position: number }> = [];
+    const explicitlyRejected: Set<string> = new Set();
+    let hasWildcard = false;
+    let wildcardQuality = 0;
 
     // Encoding preference order (higher is better)
     const encodingPriority: Record<string, number> = {
@@ -456,12 +459,34 @@ export class CompressionHandler {
         quality = Number.isNaN(parsed) ? 1.0 : Math.min(1, Math.max(0, parsed));
       }
 
-      if (quality > 0) {
+      if (encoding === '*') {
+        hasWildcard = true;
+        wildcardQuality = quality;
+      } else if (quality === 0) {
+        explicitlyRejected.add(encoding.trim().toLowerCase());
+      } else {
         encodings.push({
           encoding: encoding.trim().toLowerCase(),
           quality,
           position: i, // Track position for stable sort
         });
+      }
+    }
+
+    // If we have a wildcard with quality > 0, expand it to supported encodings
+    // per RFC 7231: Accept-Encoding: * means the client accepts any encoding
+    if (hasWildcard && wildcardQuality > 0) {
+      const supportedEncodings = Object.keys(encodingPriority);
+
+      for (const encoding of supportedEncodings) {
+        const isExplicitlyListed = encodings.some((e) => e.encoding === encoding);
+        if (!isExplicitlyListed && !explicitlyRejected.has(encoding)) {
+          encodings.push({
+            encoding,
+            quality: wildcardQuality,
+            position: parts.length, // Place wildcard entries after explicit ones
+          });
+        }
       }
     }
 
