@@ -549,6 +549,36 @@ describe('CompressionHandler', () => {
         verifyDecompression(compressed, LARGE_DATA, 'brotli');
       });
 
+      it('should expand wildcard accept-encoding to supported encodings', async () => {
+        const handler = new CompressionHandler({ brotli: true });
+        setupMock('*', 'text/plain');
+
+        const compressed = await handler.compressBuffer(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(compressed).not.toBe(LARGE_DATA);
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'br');
+        verifyDecompression(compressed, LARGE_DATA, 'brotli');
+      });
+
+      it('should not re-enable encodings explicitly rejected before wildcard expansion', async () => {
+        const handler = new CompressionHandler();
+        setupMock('gzip;q=0, *', 'text/plain');
+
+        const compressed = await handler.compressBuffer(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(compressed).not.toBe(LARGE_DATA);
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'deflate');
+        verifyDecompression(compressed, LARGE_DATA, 'deflate');
+      });
+
       it('should return original buffer when compression not needed', async () => {
         const handler = new CompressionHandler();
         setupMock('gzip', 'text/plain');

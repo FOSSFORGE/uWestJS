@@ -429,6 +429,8 @@ export class CompressionHandler {
    */
   private parseAcceptEncoding(acceptEncoding: string): string[] {
     const encodings: Array<{ encoding: string; quality: number; position: number }> = [];
+    const rejected = new Set<string>();
+    let wildcardQuality: number | null = null;
 
     // Encoding preference order (higher is better)
     const encodingPriority: Record<string, number> = {
@@ -436,6 +438,7 @@ export class CompressionHandler {
       gzip: 2, // Gzip - good compression
       deflate: 1, // Deflate - basic compression
     };
+    const supportedEncodings = Object.keys(encodingPriority);
 
     // Parse encodings with quality values
     const parts = acceptEncoding.split(',');
@@ -445,7 +448,7 @@ export class CompressionHandler {
         .trim()
         .split(';')
         .map((t) => t.trim());
-      const encoding = tokens[0];
+      const encoding = tokens[0].toLowerCase();
 
       // Find q parameter specifically (case-insensitive)
       const qToken = tokens.slice(1).find((t) => t.toLowerCase().startsWith('q='));
@@ -456,12 +459,29 @@ export class CompressionHandler {
         quality = Number.isNaN(parsed) ? 1.0 : Math.min(1, Math.max(0, parsed));
       }
 
-      if (quality > 0) {
+      if (encoding === '*') {
+        wildcardQuality = quality;
+      } else if (quality > 0) {
         encodings.push({
-          encoding: encoding.trim().toLowerCase(),
+          encoding,
           quality,
           position: i, // Track position for stable sort
         });
+      } else {
+        rejected.add(encoding);
+      }
+    }
+
+    if (wildcardQuality !== null && wildcardQuality > 0) {
+      for (const encoding of supportedEncodings) {
+        const isAlreadyListed = encodings.some((entry) => entry.encoding === encoding);
+        if (!isAlreadyListed && !rejected.has(encoding)) {
+          encodings.push({
+            encoding,
+            quality: wildcardQuality,
+            position: Number.MAX_SAFE_INTEGER,
+          });
+        }
       }
     }
 
