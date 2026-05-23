@@ -173,6 +173,53 @@ describe('BodyParser', () => {
       // Connection should be closed
       expect(mockUwsRes.close).toHaveBeenCalled();
     });
+
+    it('should preserve original error when size limit exceeded before abort', async () => {
+      // When maxBodySize is exceeded in fastAbort mode, the "Body size limit exceeded"
+      // error should be preserved even if onAborted fires and tries to overwrite it
+      const headers = { 'content-length': '100' };
+      const parser = new BodyParser(mockUwsRes, headers, 50);
+
+      const bufferPromise = parser.buffer();
+
+      // Send chunk that exceeds limit (triggers fastAbort path)
+      const chunk = Buffer.alloc(60);
+      onDataCallback(toArrayBuffer(chunk), false);
+
+      // Simulate onAborted firing after the limit was exceeded
+      // This should NOT overwrite the original error
+      onAbortedCallback();
+
+      // The error should still be "Body size limit exceeded", not "Connection aborted"
+      await expect(bufferPromise).rejects.toThrow('Body size limit exceeded');
+
+      // Subsequent buffer() calls should also preserve the original error
+      await expect(parser.buffer()).rejects.toThrow('Body size limit exceeded');
+    });
+
+    it('should preserve original error even when onAborted overwrites would occur', async () => {
+      // Verify that abortError is not overwritten when already set
+      const headers = { 'content-length': '100' };
+      const parser = new BodyParser(mockUwsRes, headers, 50);
+
+      const bufferPromise = parser.buffer();
+
+      // Send chunk exceeding limit
+      const chunk = Buffer.alloc(60);
+      onDataCallback(toArrayBuffer(chunk), false);
+
+      // Trigger abort after limit was exceeded
+      onAbortedCallback();
+
+      // Error should be "Body size limit exceeded" not "Connection aborted"
+      try {
+        await bufferPromise;
+        fail('Expected promise to reject');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe('Body size limit exceeded');
+      }
+    });
   });
 
   describe('buffer()', () => {
