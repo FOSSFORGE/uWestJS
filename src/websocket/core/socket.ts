@@ -4,8 +4,15 @@ import { RoomManager } from '../rooms';
 import { BroadcastOperator } from './broadcast-operator';
 
 /**
- * Socket wrapper that provides a Socket.IO-like API over native uWebSockets.js
- * This class wraps the native uWS.WebSocket and adds convenient methods
+ * Socket wrapper that provides a Socket.IO-like API over native uWebSockets.js.
+ * This class wraps the native uWS.WebSocket and adds convenient methods.
+ *
+ * IMPORTANT: `data` is initialized as an empty object cast to `TData`. The cast
+ * is safe for object types without required fields (the common case) but is
+ * unsafe when `TData` is a primitive type or has required properties: reading
+ * `socket.data` before assigning to it will surface a partially-typed value.
+ * Always assign `socket.data` before reading it in those cases.
+ *
  * @template TData - Type of custom data attached to the socket
  * @template TEmitData - Type of data that can be emitted
  */
