@@ -337,6 +337,80 @@ describe('CompressionHandler', () => {
         expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'deflate');
       });
 
+      it('should compress response when Accept-Encoding is wildcard (*)', () => {
+        const handler = new CompressionHandler({ brotli: true });
+        setupMock('*', 'text/plain');
+
+        const stream = handler.createCompressionStream(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(stream).toBeInstanceOf(Transform);
+        // Should pick brotli as highest priority supported encoding
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'br');
+      });
+
+      it('should expand wildcard to supported encodings not explicitly listed', () => {
+        const handler = new CompressionHandler();
+        setupMock('gzip, *', 'text/plain');
+
+        const stream = handler.createCompressionStream(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(stream).toBeInstanceOf(Transform);
+        // gzip explicitly listed with higher priority than wildcard-expanded encodings
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'gzip');
+      });
+
+      it('should respect explicitly rejected encodings with wildcard', () => {
+        const handler = new CompressionHandler();
+        setupMock('gzip;q=0, *', 'text/plain');
+
+        const stream = handler.createCompressionStream(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(stream).toBeInstanceOf(Transform);
+        // gzip rejected (q=0), wildcard should expand to deflate only (brotli not enabled)
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'deflate');
+      });
+
+      it('should respect explicitly rejected encodings with wildcard when brotli enabled', () => {
+        const handler = new CompressionHandler({ brotli: true });
+        setupMock('gzip;q=0, *', 'text/plain');
+
+        const stream = handler.createCompressionStream(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(stream).toBeInstanceOf(Transform);
+        // gzip rejected (q=0), wildcard expands to br and deflate
+        // br has highest priority
+        expect(setHeaderSpy).toHaveBeenCalledWith('content-encoding', 'br');
+      });
+
+      it('should return null for wildcard with all supported encodings rejected', () => {
+        const handler = new CompressionHandler();
+        setupMock('gzip;q=0, deflate;q=0, *;q=0', 'text/plain');
+
+        const stream = handler.createCompressionStream(
+          mockReq as UwsRequest,
+          mockRes as UwsResponse,
+          LARGE_DATA
+        );
+
+        expect(stream).toBeNull();
+      });
+
       it('should create stream without body check when body not provided', () => {
         const handler = new CompressionHandler();
         setupMock('gzip', 'text/plain');
