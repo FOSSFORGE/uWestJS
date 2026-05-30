@@ -331,6 +331,28 @@ describe('MessageRouter', () => {
     });
   });
 
+  describe('circular reference protection', () => {
+    it('should throw when registering a handler with a circular pattern', () => {
+      const pattern: Record<string, unknown> = { cmd: 'test' };
+      pattern.self = pattern;
+
+      expect(() => {
+        router.registerHandlers([createHandler(pattern, () => 'result')]);
+      }).toThrow('Circular reference detected');
+    });
+
+    it('should throw when routing a circular event object', () => {
+      router.registerHandlers([createHandler('safe', () => 'ok')]);
+
+      const circular: Record<string, unknown> = { cmd: 'test' };
+      circular.self = circular;
+
+      expect(() => {
+        router.hasHandler(circular);
+      }).toThrow('Circular reference detected');
+    });
+  });
+
   describe('edge cases with JSON serialization', () => {
     it('should treat undefined values as omitted (JSON behavior)', async () => {
       const pattern = { cmd: 'test', value: 1 };

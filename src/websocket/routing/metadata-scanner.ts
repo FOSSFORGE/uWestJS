@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import 'reflect-metadata';
+import { sortObjectKeys } from './pattern-key';
 
 /**
  * Metadata keys used by @SubscribeMessage decorator
@@ -103,7 +104,7 @@ export class MetadataScanner {
           message: messagePattern,
           messageKey:
             typeof messagePattern === 'object'
-              ? JSON.stringify(this.sortObjectKeys(messagePattern))
+              ? JSON.stringify(sortObjectKeys(messagePattern))
               : undefined,
           methodName,
           callback: method.bind(instance),
@@ -156,7 +157,7 @@ export class MetadataScanner {
     // Pre-compute eventKey for object patterns to avoid repeated serialization
     const eventKey =
       typeof event === 'object' && event !== null
-        ? JSON.stringify(this.sortObjectKeys(event))
+        ? JSON.stringify(sortObjectKeys(event))
         : undefined;
 
     const handler = handlers.find((h) => {
@@ -177,30 +178,5 @@ export class MetadataScanner {
     });
 
     return handler ? handler.methodName : null;
-  }
-
-  /**
-   * Recursively sorts object keys for stable serialization
-   * @private
-   */
-  private sortObjectKeys(
-    obj: Record<string, unknown>,
-    seen = new WeakSet<object>()
-  ): Record<string, unknown> {
-    if (seen.has(obj)) {
-      throw new Error('Circular reference detected in message pattern');
-    }
-    seen.add(obj);
-
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(obj).sort()) {
-      const value = obj[key];
-      sorted[key] =
-        value !== null && typeof value === 'object' && !Array.isArray(value)
-          ? this.sortObjectKeys(value as Record<string, unknown>, seen)
-          : value;
-    }
-    seen.delete(obj);
-    return sorted;
   }
 }

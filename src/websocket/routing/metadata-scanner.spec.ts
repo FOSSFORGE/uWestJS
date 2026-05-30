@@ -186,6 +186,30 @@ describe('MetadataScanner', () => {
       ).toBe('handleMessage');
     });
 
+    it('should match object patterns with arrays containing out-of-order keys', () => {
+      const pattern = {
+        cmd: 'batch',
+        items: [
+          { b: 1, a: 2 },
+          { d: 4, c: 3 },
+        ],
+      };
+      addMetadata('handleMessage', pattern);
+
+      scanner.scanForMessageHandlers(gateway);
+
+      // Same pattern but object keys in different order inside arrays
+      expect(
+        scanner.getMethodNameForEvent(gateway, {
+          cmd: 'batch',
+          items: [
+            { a: 2, b: 1 },
+            { c: 3, d: 4 },
+          ],
+        })
+      ).toBe('handleMessage');
+    });
+
     it('should return null for non-existent event', () => {
       addMetadata('handleMessage', 'message');
 
