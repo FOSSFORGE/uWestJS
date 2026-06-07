@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { MessageHandler } from './metadata-scanner';
+import { sortObjectKeys } from './pattern-key';
 
 /**
  * Represents an incoming WebSocket message
@@ -157,33 +158,7 @@ export class MessageRouter {
       return pattern;
     }
     // For object patterns, create a stable JSON string key with sorted keys (recursively)
-    return JSON.stringify(this.sortObjectKeys(pattern));
-  }
-
-  /**
-   * Recursively sorts object keys for stable serialization
-   * @private
-   */
-  private sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(obj).sort()) {
-      sorted[key] = this.sortValue(obj[key]);
-    }
-    return sorted;
-  }
-
-  /**
-   * Recursively sorts values (handles objects, arrays, and primitives)
-   * @private
-   */
-  private sortValue(value: unknown): unknown {
-    if (value === null || typeof value !== 'object') {
-      return value;
-    }
-    if (Array.isArray(value)) {
-      return value.map((item) => this.sortValue(item));
-    }
-    return this.sortObjectKeys(value as Record<string, unknown>);
+    return JSON.stringify(sortObjectKeys(pattern));
   }
 
   /**
