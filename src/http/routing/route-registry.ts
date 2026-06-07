@@ -449,6 +449,7 @@ export class RouteRegistry {
    * Execute a route handler with middleware pipeline
    *
    * Executes the full middleware pipeline:
+   * 0. CORS - Handle CORS headers and preflight
    * 1. Guards - Authorization checks
    * 2. Body parsing - Parse request body if present
    * 3. Pipes - Transform/validate body

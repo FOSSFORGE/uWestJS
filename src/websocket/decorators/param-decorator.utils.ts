@@ -71,9 +71,8 @@ export function createParamDecorator(
     ];
 
     // Check if this parameter index already has metadata
-    const existingIndex = existingParams.findIndex((p) => p.index === parameterIndex);
-    if (existingIndex !== -1) {
-      const existing = existingParams[existingIndex];
+    const existing = existingParams.find((p) => p.index === parameterIndex);
+    if (existing) {
       const existingDecoratorName = PARAM_TYPE_TO_DECORATOR_NAME[existing.type];
       throw new Error(
         `${decoratorName} decorator: parameter at index ${parameterIndex} already has @${existingDecoratorName} decorator applied. ` +
