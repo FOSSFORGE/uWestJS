@@ -9,6 +9,7 @@ import type {
   ResolvedUwsAdapterOptions,
 } from '../interfaces/uws-options.interface';
 import type { WebSocketClient } from '../interfaces/websocket-client.interface';
+import type { SocketHandshake } from '../interfaces/uws-socket.interface';
 import { MetadataScanner } from '../routing/metadata-scanner';
 import { MessageRouter } from '../routing/message-router';
 import { HandlerExecutor } from '../routing/handler-executor';
@@ -22,6 +23,18 @@ import { DefaultModuleRef, NestJsModuleRef, type ModuleRef } from '../../shared/
  */
 interface ExtendedWebSocket extends uWS.WebSocket<WebSocketClient> {
   id?: string;
+  upgradeRequest?: UpgradeRequestData;
+}
+
+/**
+ * Raw upgrade request data captured in the `upgrade` handler.
+ * uWebSockets.js invalidates the HttpRequest as soon as the upgrade callback
+ * returns, so everything needed later has to be copied out here.
+ */
+interface UpgradeRequestData {
+  url: string;
+  queryString: string;
+  headers: Record<string, string>;
 }
 
 /**
@@ -252,6 +265,33 @@ export class UwsAdapter implements WebSocketAdapter {
         closeOnBackpressureLimit: this.options.closeOnBackpressureLimit,
         sendPingsAutomatically: this.options.sendPingsAutomatically,
 
+        upgrade: (
+          res: uWS.HttpResponse,
+          req: uWS.HttpRequest,
+          context: uWS.us_socket_context_t
+        ) => {
+          // Copy the upgrade request out now: uWebSockets.js invalidates
+          // `req` as soon as this callback returns.
+          const headers: Record<string, string> = {};
+          req.forEach((key, value) => {
+            headers[key] = value;
+          });
+
+          const upgradeRequest: UpgradeRequestData = {
+            url: req.getUrl(),
+            queryString: req.getQuery() || '',
+            headers,
+          };
+
+          res.upgrade(
+            { upgradeRequest } as unknown as WebSocketClient,
+            req.getHeader('sec-websocket-key'),
+            req.getHeader('sec-websocket-protocol'),
+            req.getHeader('sec-websocket-extensions'),
+            context
+          );
+        },
+
         open: (ws: uWS.WebSocket<WebSocketClient>) => {
           const extWs = ws as ExtendedWebSocket;
           const id = this.generateId();
@@ -265,13 +305,17 @@ export class UwsAdapter implements WebSocketAdapter {
             this.roomManager,
             this.broadcastToRooms.bind(this)
           );
+          socket.handshake = this.buildHandshake(extWs);
           this.sockets.set(id, socket);
 
           try {
-            // Call lifecycle hooks for all registered gateways
+            // Lifecycle hooks receive the wrapped socket (the same instance
+            // message handlers get via @ConnectedSocket), so data attached in
+            // handleConnection stays visible to handlers and the documented
+            // UwsSocket API (emit/join/handshake) works there.
             this.gateways.forEach((_name, gateway) => {
               try {
-                this.lifecycleHooksManager.callConnectionHook(gateway, extWs);
+                this.lifecycleHooksManager.callConnectionHook(gateway, socket);
               } catch (error) {
                 this.logger.error(
                   `Connection hook error for ${gateway.constructor?.name}: ${this.formatError(error)}`
@@ -315,6 +359,7 @@ export class UwsAdapter implements WebSocketAdapter {
         close: (ws: uWS.WebSocket<WebSocketClient>, _code: number, _message: ArrayBuffer) => {
           const extWs = ws as ExtendedWebSocket;
           const id = extWs.id;
+          const socket = id ? this.sockets.get(id) : undefined;
 
           if (id) {
             // Remove client from all rooms
@@ -325,10 +370,11 @@ export class UwsAdapter implements WebSocketAdapter {
           }
 
           try {
-            // Call lifecycle hooks for all registered gateways
+            // Call lifecycle hooks for all registered gateways with the same
+            // wrapped socket handleConnection received
             this.gateways.forEach((_name, gateway) => {
               try {
-                this.lifecycleHooksManager.callDisconnectHook(gateway, extWs);
+                this.lifecycleHooksManager.callDisconnectHook(gateway, socket ?? extWs);
               } catch (error) {
                 this.logger.error(
                   `Disconnect hook error for ${gateway.constructor?.name}: ${this.formatError(error)}`
@@ -848,6 +894,39 @@ export class UwsAdapter implements WebSocketAdapter {
    */
   private generateId(): string {
     return randomBytes(8).toString('hex');
+  }
+
+  /**
+   * Build the socket handshake from the upgrade request captured in the
+   * `upgrade` handler
+   * @param extWs - Native socket carrying the captured upgrade request
+   * @returns Handshake with url, parsed query, headers and remote address
+   */
+  private buildHandshake(extWs: ExtendedWebSocket): SocketHandshake {
+    const upgradeRequest = extWs.upgradeRequest;
+    const query: Record<string, string> = {};
+
+    if (upgradeRequest?.queryString) {
+      for (const [key, value] of new URLSearchParams(upgradeRequest.queryString)) {
+        if (!(key in query)) {
+          query[key] = value;
+        }
+      }
+    }
+
+    let address = '';
+    try {
+      address = Buffer.from(extWs.getRemoteAddressAsText()).toString('utf-8');
+    } catch {
+      // Socket already closed - leave the address empty
+    }
+
+    return {
+      url: upgradeRequest?.url ?? '',
+      query,
+      headers: upgradeRequest?.headers ?? {},
+      address,
+    };
   }
 
   /**

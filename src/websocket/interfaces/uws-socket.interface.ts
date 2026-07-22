@@ -1,4 +1,31 @@
 /**
+ * Data captured from the HTTP upgrade request when the WebSocket connection
+ * was established
+ */
+export interface SocketHandshake {
+  /**
+   * Request path of the upgrade request (e.g. '/chat')
+   */
+  url: string;
+
+  /**
+   * Query parameters parsed from the upgrade request URL.
+   * When a key appears multiple times, the first value wins.
+   */
+  query: Record<string, string>;
+
+  /**
+   * Headers sent with the upgrade request (header names are lowercase)
+   */
+  headers: Record<string, string>;
+
+  /**
+   * Remote address of the connection as reported by uWebSockets.js
+   */
+  address: string;
+}
+
+/**
  * Enhanced WebSocket interface with uWestJS features
  * This wraps the native uWebSockets.js socket with a Socket.IO-like API
  * @template TData - Type of custom data attached to the socket
@@ -9,6 +36,19 @@ export interface UwsSocket<TData = unknown, TEmitData = unknown> {
    * Unique socket identifier
    */
   readonly id: string;
+
+  /**
+   * Data captured from the HTTP upgrade request (path, query, headers,
+   * remote address). Always set by the adapter for sockets it creates.
+   * @example
+   * ```typescript
+   * handleConnection(client: UwsSocket) {
+   *   const token = client.handshake?.query.token;
+   *   const userAgent = client.handshake?.headers['user-agent'];
+   * }
+   * ```
+   */
+  handshake?: SocketHandshake;
 
   /**
    * Custom data attached to the socket

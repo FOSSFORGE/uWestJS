@@ -1,5 +1,10 @@
 import * as uWS from 'uWebSockets.js';
-import { UwsSocket, BroadcastOperator as IBroadcastOperator, WebSocketClient } from '../interfaces';
+import {
+  UwsSocket,
+  SocketHandshake,
+  BroadcastOperator as IBroadcastOperator,
+  WebSocketClient,
+} from '../interfaces';
 import { RoomManager } from '../rooms';
 import { BroadcastOperator } from './broadcast-operator';
 
@@ -22,6 +27,13 @@ export class UwsSocketImpl<TData = unknown, TEmitData = unknown> implements UwsS
 > {
   private _id: string;
   private _data: TData;
+
+  /**
+   * Data captured from the HTTP upgrade request (path, query, headers,
+   * remote address). Set by the adapter when the connection is opened.
+   */
+  handshake?: SocketHandshake;
+
   private nativeSocket: uWS.WebSocket<WebSocketClient>;
   private roomManager: RoomManager;
   private broadcastFn: (
