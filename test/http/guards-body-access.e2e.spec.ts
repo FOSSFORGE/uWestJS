@@ -104,12 +104,13 @@ describe('Guards and body access E2E', () => {
     method: string,
     path: string,
     body?: string,
-    contentType = 'application/json'
+    contentType: string | null = 'application/json'
   ): Promise<{ status: number; body: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = {};
       if (body !== undefined) {
-        headers['Content-Type'] = contentType;
+        // contentType === null sends a body WITHOUT a Content-Type header
+        if (contentType !== null) headers['Content-Type'] = contentType;
         headers['Content-Length'] = Buffer.byteLength(body).toString();
       }
 
@@ -156,6 +157,18 @@ describe('Guards and body access E2E', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ body: { hello: 'world' }, wasPromise: false });
+  });
+
+  it('gives guards a concrete body, not a pending Promise, when the request has a body but no Content-Type header', async () => {
+    const res = await request('POST', '/guarded/action', JSON.stringify({ role: 'admin' }), null);
+
+    // A body without a Content-Type is buffered (not JSON-decoded), so the guard
+    // cannot read .role and returns false -> 403. The point is that it saw a
+    // resolved value: before parsing moved ahead of guards it saw the pending
+    // buffer() Promise and threw 401 "Missing payload".
+    expect(res.status).toBe(403);
+    expect(bodySeenByGuard).toBeDefined();
+    expect(typeof (bodySeenByGuard as { then?: unknown })?.then).not.toBe('function');
   });
 
   it('still rejects malformed JSON before the handler runs', async () => {

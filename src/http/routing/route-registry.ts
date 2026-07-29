@@ -480,10 +480,12 @@ export class RouteRegistry {
       // Create execution context for middleware
       const context = new HttpExecutionContext(req, res, handler, metadata?.classRef);
 
-      // 1. Parse body if content-type header is present
-      // Parsing happens before guards so guards (and anything else that reads
+      // 1. Parse body before guards so guards (and anything else that reads
       // request.body without awaiting) observe the parsed value, matching the
       // Express platform where body-parser middleware runs ahead of guards.
+      // Parse whenever the request is not a streaming type, including requests
+      // that carry a body without a Content-Type header (otherwise guards get
+      // the pending buffer() Promise instead of the stored body).
       // Skip auto-parsing for streaming content types (application/octet-stream, multipart/form-data)
       // These should be handled explicitly by the user via req.on('data') or req.multipart()
       let body: unknown;
@@ -494,7 +496,7 @@ export class RouteRegistry {
         (normalizedContentType.includes('application/octet-stream') ||
           normalizedContentType.includes('multipart/form-data'));
 
-      if (normalizedContentType && !isStreamingContentType) {
+      if (!isStreamingContentType) {
         body = await req.body;
         // Store the parsed body so the request.body getter resolves
         // synchronously from here on
