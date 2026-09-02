@@ -1330,9 +1330,12 @@ export class UwsRequest extends Readable {
   /**
    * Get body based on content-type (convenience method)
    *
-   * **IMPORTANT**: Unlike Express, this returns a Promise because uWebSockets.js
-   * body parsing is inherently async. In NestJS, use the @Body() decorator instead
-   * of accessing this property directly.
+   * Once the middleware pipeline has parsed the body (or pipes have
+   * transformed it), this returns the parsed value directly, so guards and
+   * other synchronous readers observe the actual body like they would on
+   * Express. Before parsing it returns a Promise because uWebSockets.js
+   * body parsing is inherently async - `await request.body` works in both
+   * cases.
    *
    * Automatically parses the body based on the Content-Type header:
    * - application/json → json()
@@ -1342,7 +1345,7 @@ export class UwsRequest extends Readable {
    *
    * @example
    * ```typescript
-   * // Must await the promise
+   * // Works whether or not the body has been parsed yet
    * const data = await request.body;
    *
    * // In NestJS, use decorators instead:
@@ -1352,12 +1355,14 @@ export class UwsRequest extends Readable {
    * }
    * ```
    *
-   * @returns Promise that resolves with the parsed body
+   * @returns The parsed body, or a Promise resolving to it when parsing has
+   * not happened yet
    */
-  get body(): Promise<unknown> {
-    // If body was transformed by pipes, return that instead of re-parsing
+  get body(): unknown {
+    // Once parsed (or transformed by pipes), return the value synchronously
+    // so non-awaiting readers like guards see the real body
     if (this.hasTransformedBody) {
-      return Promise.resolve(this.transformedBody);
+      return this.transformedBody;
     }
 
     // Use is() method for robust content-type matching
