@@ -83,7 +83,12 @@ export class BodyParser {
       // Without this, promises will hang forever if connection is aborted
       uwsRes.onAborted(() => {
         this.aborted = true;
-        this.abortError = new Error('Connection aborted');
+        // Only set abortError if not already set (e.g., by size limit enforcement)
+        // This preserves the original error message ("Body size limit exceeded")
+        // instead of overwriting it with a generic "Connection aborted"
+        if (!this.abortError) {
+          this.abortError = new Error('Connection aborted');
+        }
         this.flushing = true; // Stop processing chunks
 
         // abortCallback handles client disconnects
@@ -134,6 +139,9 @@ export class BodyParser {
     if (this.receivedBytes > this.limitBytes) {
       this.flushing = true;
       const error = new Error('Body size limit exceeded');
+
+      // Preserve the original error before onAborted can overwrite it
+      this.abortError = error;
 
       // Reject any pending promise
       if (this.pendingReject) {
